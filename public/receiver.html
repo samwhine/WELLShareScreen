@@ -1,0 +1,1426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>WELL Share Screen — Receiver</title>
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="apple-touch-icon" href="/favicon.ico">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg:      #050508;
+            --surface: rgba(255,255,255,0.04);
+            --border:  rgba(255,255,255,0.07);
+            --accent:  #7c6aff;
+            --accent2: #4ef0b8;
+            --yellow:  #ffd166;
+            --muted:   #444460;
+            --text:    #e8e8f0;
+            --danger:  #ff4d6a;
+            --green:   #4ef0b8;
+            --fade:    1s ease;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            width: 100%; height: 100%;
+            overflow: hidden;
+            position: fixed;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'DM Sans', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .screen {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg);
+            opacity: 1;
+            visibility: visible;
+            pointer-events: all;
+            transition: opacity var(--fade), visibility var(--fade);
+            will-change: opacity; /* kasih hint ke browser buat promote ke compositing layer
+                                     sendiri — fade opacity jadi murni kerjaan GPU (blend layer),
+                                     gak perlu repaint konten di dalamnya tiap frame transisi */
+        }
+
+        .screen.off {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .screen.gone {
+            visibility: hidden;
+            display: none; /* stop animasi & rendering total, bukan cuma nyembunyiin visual —
+                               visibility:hidden doang gak nge-pause CSS animation (waitPulse, blink,
+                               dll tetep jalan di background walau invisible). Ini yang bikin
+                               "boros" pas udah di screen video padahal screen lain harusnya diem.
+                               Aman ditambahin karena .gone baru di-apply SETELAH fade selesai
+                               (lihat fadeOut/FADE_MS), dan selalu di-remove duluan sebelum fadeIn
+                               mulai — jadi gak ganggu animasi transisi sama sekali. */
+        }
+
+        #screen-connect { z-index: 30; }
+        #screen-waiting { z-index: 20; }
+        #screen-video   { z-index: 10; background: #000; }
+        #remote-video { opacity: 0; }
+
+        #screen-connect::after,
+        #screen-waiting::after {
+            content: '';
+            position: absolute; inset: 0;
+            background-image:
+                linear-gradient(rgba(124,106,255,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(124,106,255,0.03) 1px, transparent 1px);
+            background-size: 60px 60px;
+            pointer-events: none;
+        }
+
+        .screen-content {
+            position: relative;
+            z-index: 2;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            max-width: 760px;
+            padding: 24px 28px;
+            max-height: 100vh;
+            overflow-y: auto;
+            overflow-x: hidden;
+            scrollbar-width: none;
+        }
+        .screen-content::-webkit-scrollbar { display: none; }
+
+        /* ─── BRAND ─────────────────────────────────────────────────── */
+        .brand {
+            display: flex; align-items: center; gap: 10px;
+            margin-bottom: 20px;
+            align-self: flex-start;
+        }
+        .brand-icon {
+            width: 38px; height: 38px;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            border-radius: 11px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px; flex-shrink: 0;
+        }
+        .brand-name {
+            font-family: 'Space Mono', monospace;
+            font-size: 16px; font-weight: 700;
+            background: linear-gradient(90deg, #fff, var(--accent));
+            -webkit-background-clip: text; background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* ─── CONNECT DASHBOARD ──────────────────────────────────────── */
+        .connect-dashboard {
+            width: 100%;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            align-items: stretch;
+        }
+
+        .dash-panel {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .dash-panel-title {
+            font-size: 9px; font-weight: 700;
+            letter-spacing: 2.5px; text-transform: uppercase;
+            color: var(--muted); margin-bottom: 14px;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .dash-panel-title::after {
+            content: ''; flex: 1; height: 1px; background: var(--border);
+        }
+
+        /* Mode cards inside left panel */
+        .mode-card {
+            padding: 12px 10px;
+            border-radius: 11px; cursor: pointer; transition: all 0.2s;
+            font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 600;
+            display: flex; align-items: center; gap: 10px;
+            border: 1px solid var(--border);
+            background: transparent; color: var(--muted);
+            text-align: left; width: 100%;
+            margin-bottom: 8px;
+        }
+        .mode-card:last-child { margin-bottom: 0; }
+        .mode-card-icon { font-size: 20px; flex-shrink: 0; }
+        .mode-card-label { font-size: 13px; font-weight: 600; }
+        .mode-card-sub { font-size: 10px; font-weight: 400; opacity: 0.55; margin-top: 1px; }
+        .mode-card.active-pin {
+            border-color: rgba(124,106,255,0.5);
+            background: rgba(124,106,255,0.12);
+            color: var(--accent);
+        }
+        .mode-card.active-nopin {
+            border-color: rgba(78,240,184,0.45);
+            background: rgba(78,240,184,0.08);
+            color: var(--accent2);
+        }
+
+        /* Right panel — input */
+        .code-label {
+            font-size: 9px;
+            letter-spacing: 2.5px; text-transform: uppercase;
+            color: var(--muted); margin-bottom: 10px;
+        }
+
+        #sender-code-input {
+            font-family: 'Space Mono', monospace;
+            font-size: 48px;
+            font-weight: 700; color: var(--yellow);
+            background: transparent; border: none;
+            border-bottom: 2px solid rgba(255,209,102,0.25);
+            outline: none; text-align: center;
+            letter-spacing: 0.15em; width: 100%;
+            margin-bottom: 6px; display: block;
+            transition: border-color 0.2s;
+        }
+        #sender-code-input:focus { border-bottom-color: rgba(255,209,102,0.65); }
+
+        .code-hint {
+            font-size: 11px;
+            color: var(--muted); margin-bottom: 16px;
+        }
+
+        .connect-btn {
+            width: 100%;
+            padding: 12px 20px;
+            background: linear-gradient(135deg, #7c6aff, #5a4be0);
+            border: none; border-radius: 11px;
+            color: white; font-family: 'DM Sans', sans-serif;
+            font-size: 14px; font-weight: 600; cursor: pointer;
+            box-shadow: 0 4px 16px rgba(124,106,255,0.25);
+            transition: transform 0.15s, box-shadow 0.15s, opacity 0.2s;
+            white-space: nowrap;
+        }
+        .connect-btn:hover  { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(124,106,255,0.4); }
+        .connect-btn:active { transform: translateY(0); }
+        .connect-btn:disabled { opacity: 0.55; cursor: default; transform: none; }
+
+        /* Bottom row */
+        .connect-footer {
+            width: 100%;
+            display: flex; align-items: center; justify-content: space-between;
+            margin-top: 12px;
+        }
+
+        .chip {
+            display: inline-flex; align-items: center; gap: 7px;
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 20px; padding: 6px 14px;
+            font-size: 11px; color: var(--muted);
+            transition: all 0.3s;
+        }
+        .chip-dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: var(--muted); transition: all 0.3s; flex-shrink: 0;
+        }
+        .chip.ready .chip-dot { background: var(--green); box-shadow: 0 0 6px var(--green); animation: blink 2s infinite; }
+        .chip.ready { color: var(--text); border-color: rgba(78,240,184,0.2); }
+
+        .switch-link {
+            display: inline-flex; align-items: center; gap: 7px;
+            color: var(--muted); font-size: 11px; text-decoration: none;
+            padding: 6px 14px; border: 1px solid var(--border);
+            border-radius: 10px;
+            transition: color 0.2s, border-color 0.2s;
+        }
+        .switch-link:hover { color: var(--accent); border-color: rgba(124,106,255,0.3); }
+
+        /* nopin desc */
+        .nopin-desc {
+            font-size: 12px; color: var(--muted); line-height: 1.65;
+            margin-bottom: 16px; flex: 1;
+        }
+
+        /* Mobile fallback */
+        @media (max-width: 560px) {
+            .connect-dashboard { grid-template-columns: 1fr; }
+            .brand { align-self: center; }
+            .connect-footer { flex-direction: column; gap: 8px; }
+        }
+
+        /* ─── WAITING SCREEN ─────────────────────────────────────────── */
+        .wait-icon {
+            width: clamp(60px, 12vw, 80px); height: clamp(60px, 12vw, 80px);
+            border-radius: 50%;
+            background: rgba(78,240,184,0.08); border: 1px solid rgba(78,240,184,0.2);
+            display: flex; align-items: center; justify-content: center;
+            font-size: clamp(26px, 6vw, 36px);
+            margin-bottom: clamp(18px, 4vh, 28px);
+            animation: waitPulse 2.5s ease-in-out infinite;
+        }
+        .wait-title {
+            font-family: 'Space Mono', monospace;
+            font-size: clamp(18px, 5vw, 28px); font-weight: 700;
+            color: var(--text); margin-bottom: 12px;
+        }
+        .wait-desc {
+            font-size: clamp(12px, 3vw, 15px);
+            color: var(--muted); line-height: 1.7;
+            max-width: 320px; margin-bottom: clamp(20px, 4vh, 32px);
+        }
+        .wait-status {
+            display: flex; align-items: center; gap: 10px;
+            background: rgba(78,240,184,0.06); border: 1px solid rgba(78,240,184,0.15);
+            border-radius: 20px; padding: 9px 18px;
+            margin-bottom: 16px;
+        }
+        .wait-dot {
+            width: 7px; height: 7px; border-radius: 50%;
+            background: var(--accent2); flex-shrink: 0;
+            animation: blink 1.5s infinite;
+        }
+        .wait-status-text {
+            font-size: 11px; color: var(--accent2);
+            letter-spacing: 1.5px; text-transform: uppercase;
+        }
+        .wait-code-badge {
+            font-family: 'Space Mono', monospace;
+            font-size: 13px; color: var(--muted);
+            letter-spacing: 2px; margin-bottom: clamp(18px, 3vh, 28px);
+        }
+        .wait-disconnect-btn {
+            padding: 10px 24px; background: transparent;
+            border: 1px solid rgba(255,255,255,0.1); border-radius: 10px;
+            color: var(--muted); font-family: 'DM Sans', sans-serif;
+            font-size: 13px; cursor: pointer; transition: all 0.2s;
+        }
+        .wait-disconnect-btn:hover { border-color: rgba(255,77,106,0.3); color: var(--danger); }
+
+        /* ─── VIDEO SCREEN ───────────────────────────────────────────── */
+        #remote-video {
+            width: 100%; height: 100%;
+            object-fit: contain; display: block;
+        }
+
+        .hud {
+            position: absolute; top: 0; left: 0; right: 0;
+            padding: 16px 20px;
+            display: flex; justify-content: space-between; align-items: flex-start;
+            background: linear-gradient(180deg, rgba(0,0,0,0.6) 0%, transparent 100%);
+            opacity: 0; pointer-events: none;
+            transition: opacity 0.35s ease;
+        }
+        #screen-video.hud-visible .hud { opacity: 1; pointer-events: all; }
+
+        .hud-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .live-badge {
+            background: rgba(255,77,106,0.9); border-radius: 6px;
+            padding: 4px 10px; font-size: 11px; font-weight: 700;
+            letter-spacing: 1.5px; color: white;
+            display: flex; align-items: center; gap: 5px;
+        }
+        .live-dot {
+            width: 6px; height: 6px; background: white;
+            border-radius: 50%; animation: blink 0.8s infinite;
+        }
+        .hud-stat {
+            font-family: 'Space Mono', monospace; font-size: 12px;
+            color: rgba(255,255,255,0.6); background: rgba(0,0,0,0.4);
+            padding: 4px 10px; border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+        .hud-right { display: flex; gap: 8px; }
+        .hud-btn {
+            background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 8px; color: rgba(255,255,255,0.7);
+            padding: 6px 12px; font-size: 13px; cursor: pointer;
+            transition: all 0.2s; font-family: 'DM Sans', sans-serif;
+        }
+        .hud-btn:hover { background: rgba(255,255,255,0.15); color: white; }
+        .hud-btn-exit:hover { background: rgba(255,77,106,0.3) !important; color: #ff4d6a !important; border-color: rgba(255,77,106,0.4) !important; }
+
+        .hud-bottom {
+            position: absolute; bottom: 0; left: 0; right: 0; padding: 20px;
+            background: linear-gradient(0deg, rgba(0,0,0,0.6) 0%, transparent 100%);
+            display: flex; justify-content: flex-end; align-items: flex-end;
+            opacity: 0; pointer-events: none; transition: opacity 0.35s ease;
+        }
+        #screen-video.hud-visible .hud-bottom { opacity: 1; }
+
+        .code-corner {
+            font-family: 'Space Mono', monospace;
+            font-size: 13px; color: rgba(255,255,255,0.3);
+        }
+
+        #freeze-overlay {
+            position: absolute; inset: 0;
+            display: flex; align-items: flex-start; justify-content: flex-start;
+            padding: 12px; opacity: 0; pointer-events: none; transition: opacity 0.3s;
+        }
+        #freeze-overlay.visible { opacity: 1; }
+        .freeze-text {
+            font-family: 'Space Mono', monospace; font-size: 13px; font-weight: 700;
+            letter-spacing: 2px; color: var(--yellow);
+            background: rgba(0,0,0,0.5); padding: 4px 10px;
+            border-radius: 6px; animation: blink 1.2s infinite;
+        }
+
+        /* Sender alert overlay — nampilin pesan error/status dari sender (misal mic disconnected) */
+        #sender-alert-overlay {
+            position: absolute; top: 0; left: 0; right: 0;
+            display: flex; justify-content: center;
+            padding-top: 16px; opacity: 0; pointer-events: none;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            transform: translateY(-8px);
+            z-index: 15;
+        }
+        #sender-alert-overlay.visible { opacity: 1; transform: translateY(0); }
+        .sender-alert-box {
+            display: flex; align-items: center; gap: 10px;
+            font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 600;
+            color: var(--text);
+            background: rgba(20,8,12,0.85);
+            border: 1px solid rgba(255,77,106,0.4);
+            box-shadow: 0 4px 18px rgba(255,77,106,0.18);
+            padding: 10px 16px; border-radius: 12px;
+            max-width: 90%;
+        }
+        .sender-alert-code {
+            font-family: 'Space Mono', monospace; font-size: 10px; font-weight: 700;
+            letter-spacing: 1px; color: var(--danger);
+            background: rgba(255,77,106,0.12); border: 1px solid rgba(255,77,106,0.3);
+            padding: 2px 7px; border-radius: 6px; flex-shrink: 0;
+        }
+
+        /* Tap-to-play overlay — video jalan samar (20%) di belakang */
+        #tap-overlay {
+            position: fixed; inset: 0; z-index: 200;
+            background: rgba(0,0,0,0.55);
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center; gap: 20px;
+            opacity: 0; pointer-events: none;
+            transition: opacity 1s ease;
+        }
+        #tap-overlay.visible { opacity: 1; pointer-events: all; }
+        .tap-btn {
+            background: linear-gradient(135deg, var(--accent), #5a4be0);
+            border: none; border-radius: 16px; color: white;
+            font-family: 'DM Sans', sans-serif; font-size: 18px; font-weight: 600;
+            padding: 18px 40px; cursor: pointer;
+            box-shadow: 0 4px 16px rgba(124,106,255,0.3);
+        }
+        .tap-hint { font-size: 13px; color: var(--muted); letter-spacing: 1px; }
+
+        #toast {
+            position: fixed; bottom: 24px; left: 50%; z-index: 300;
+            transform: translateX(-50%) translateY(80px);
+            background: #1a1a28; border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 12px; padding: 12px 20px; font-size: 13px;
+            transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+            white-space: nowrap; box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+            color: #e8e8f0; font-family: 'DM Sans', sans-serif;
+            pointer-events: none;
+        }
+
+        /* ─── ANIMATIONS ─────────────────────────────────────────────── */
+        @keyframes blink    { 50% { opacity: 0.3; } }
+        @keyframes waitPulse {
+            0%,100% { transform: scale(1);    opacity: 1; }
+            50%      { transform: scale(1.04); opacity: 0.85; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- iOS/Safari tap-to-play (highest z) -->
+    <div id="tap-overlay">
+        <div style="font-size:48px">📺</div>
+        <button class="tap-btn" onclick="handleTapToPlay()">▶ Tap to Start</button>
+        <div class="tap-hint">Safari requires a tap before video can play</div>
+    </div>
+
+    <!-- ── SCREEN 1: Enter sender code ─────────────────────────────── -->
+    <div class="screen" id="screen-connect">
+        <div class="screen-content">
+
+            <!-- Brand top-left -->
+            <div class="brand">
+                <div class="brand-icon">📺</div>
+                <span class="brand-name">WELL Share Screen</span>
+            </div>
+
+            <!-- 2-col dashboard -->
+            <div class="connect-dashboard">
+
+                <!-- LEFT: Mode selector -->
+                <div class="dash-panel">
+                    <div class="dash-panel-title">Connection Mode</div>
+
+                    <button id="mode-pin-card" onclick="selectReceiverMode('pin')" class="mode-card active-pin">
+                        <span class="mode-card-icon">🔒</span>
+                        <div>
+                            <div class="mode-card-label">PIN Code</div>
+                            <div class="mode-card-sub">Secure · Private</div>
+                        </div>
+                    </button>
+
+                    <button id="mode-nopin-card" onclick="selectReceiverMode('nopin')" class="mode-card">
+                        <span class="mode-card-icon">⚡</span>
+                        <div>
+                            <div class="mode-card-label">Without PIN</div>
+                            <div class="mode-card-sub">Easy · Multi-device</div>
+                        </div>
+                    </button>
+                </div>
+
+                <!-- RIGHT: Action panel -->
+                <div class="dash-panel">
+
+                    <!-- PIN input -->
+                    <div id="pin-input-area" style="display:flex;flex-direction:column;flex:1">
+                        <div class="dash-panel-title">Sender Code</div>
+                        <input type="text" id="sender-code-input"
+                            placeholder="····" maxlength="4" inputmode="numeric" autocomplete="off">
+                        <div class="code-hint">Enter the 4-digit code shown on the sender</div>
+                        <button class="connect-btn" id="connect-btn" onclick="connectToSender()">
+                            Connect to Sender
+                        </button>
+                    </div>
+
+                    <!-- Without PIN -->
+                    <div id="nopin-area" style="display:none;flex-direction:column;flex:1">
+                        <div class="dash-panel-title">Auto Connect</div>
+                        <p class="nopin-desc">
+                            Make sure the sender has selected
+                            <strong style="color:var(--accent2)">Without PIN</strong> mode
+                            and is currently sharing.
+                        </p>
+                        <button class="connect-btn" id="without-pin-btn" onclick="connectWithoutPin()">
+                            ⚡ Connect Without PIN
+                        </button>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- Footer row -->
+            <div class="connect-footer">
+                <div class="chip" id="peer-chip">
+                    <div class="chip-dot"></div>
+                    <span id="peer-chip-text">Connecting to server...</span>
+                </div>
+                <a href="/sender" class="switch-link">🖥️ Switch to Sender</a>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ── SCREEN 2: Waiting room ───────────────────────────────────── -->
+    <div class="screen off gone" id="screen-waiting">
+        <div class="screen-content">
+            <div class="wait-icon" id="wait-icon">⏳</div>
+            <div class="wait-title" id="wait-title">Waiting for Sender</div>
+            <div class="wait-desc" id="wait-desc">
+                Connected to the sender.<br>
+                The stream will appear automatically<br>
+                when the sender starts sharing.
+            </div>
+            <div class="wait-status">
+                <div class="wait-dot"></div>
+                <span class="wait-status-text" id="wait-status-text">CONNECTED · AWAITING STREAM</span>
+            </div>
+            <div class="wait-code-badge" id="wait-code-badge">Sender: ----</div>
+            <button class="wait-disconnect-btn" onclick="disconnectAndReset()">✕ Disconnect</button>
+        </div>
+    </div>
+
+    <!-- ── SCREEN 3: Live video ─────────────────────────────────────── -->
+    <div class="screen" id="screen-video">
+        <video id="remote-video" autoplay playsinline></video>
+        <canvas id="freeze-canvas" style="
+            position:absolute;inset:0;width:100%;height:100%;
+            object-fit:contain;display:none;background:#000;
+        "></canvas>
+
+        <div class="hud">
+            <div class="hud-left">
+                <div class="live-badge"><div class="live-dot"></div>LIVE</div>
+                <div class="hud-stat" id="hud-fps">-- FPS</div>
+                <div class="hud-stat" id="hud-res">--</div>
+                <div class="hud-stat" id="hud-bitrate">-- Mbps</div>
+            </div>
+            <div class="hud-right">
+                <button class="hud-btn" onclick="toggleFullscreen()">⛶ Fullscreen</button>
+                <button class="hud-btn" id="mute-btn" onclick="toggleMute()">🔊 Mute</button>
+                <button class="hud-btn hud-btn-exit" onclick="exitToConnect()">✕ Exit</button>
+            </div>
+        </div>
+
+        <div id="freeze-overlay">
+            <div class="freeze-text">⏸ PAUSED</div>
+        </div>
+
+        <div id="sender-alert-overlay">
+            <div class="sender-alert-box">
+                <span class="sender-alert-code" id="sender-alert-code">ALERT</span>
+                <span id="sender-alert-text">Sender reported an issue</span>
+            </div>
+        </div>
+
+        <div class="hud-bottom">
+            <div class="code-corner" id="hud-code">Sender: ----</div>
+        </div>
+    </div>
+
+    <div id="toast"></div>
+
+    <script src="peerjs.min.js"></script>
+    <script>
+    /* ─── ELEMENT REFS ───────────────────────────────────────────────── */
+    const $connect  = document.getElementById('screen-connect');
+    const $waiting  = document.getElementById('screen-waiting');
+    const $video    = document.getElementById('screen-video');
+    const $chip     = document.getElementById('peer-chip');
+    const $chipText = document.getElementById('peer-chip-text');
+    const $tapOver  = document.getElementById('tap-overlay');
+    const $videoEl  = document.getElementById('remote-video');
+    const $canvas   = document.getElementById('freeze-canvas');
+
+    /* ─── FREEZE FRAME ───────────────────────────────────────────────── */
+    function freezeLastFrame() {
+        if (!$videoEl || $videoEl.readyState < 2) return;
+        $canvas.width  = $videoEl.videoWidth  || $videoEl.clientWidth;
+        $canvas.height = $videoEl.videoHeight || $videoEl.clientHeight;
+        const ctx = $canvas.getContext('2d');
+        ctx.drawImage($videoEl, 0, 0, $canvas.width, $canvas.height);
+        $canvas.style.display = 'block';
+        $videoEl.style.display = 'none';
+        isFrozen = true;
+    }
+
+    function unfreeze() {
+        $canvas.style.display = 'none';
+        $videoEl.style.display = 'block';
+        isFrozen = false;
+    }
+
+    /* ─── STATE ──────────────────────────────────────────────────────── */
+    let peer          = null;
+    let myID          = null;
+    let senderCode    = null;
+    let activeCall    = null;
+    let pendingStream = null;
+    let pendingCall   = null;
+    let muted         = false;
+    let isStreaming   = false;
+    let isFrozen      = false;  // true saat frame terakhir di-hold di canvas
+    let statsInterval    = null;
+    let freezeInterval   = null;
+    let hudTimer         = null;
+    let srcObjectTimer   = null;
+    let withoutPinMode   = false; // true saat connect via Without PIN
+    let withoutPinRetryActive = false; // guard: cegah dobel retry loop pas sender restart di mode Without PIN
+
+    /* Timers used to apply .gone after fade-out finishes */
+    const goneTimers = new Map();
+    const FADE_MS = 1100; // match --fade CSS 1s + buffer — semua transisi smooth 1000ms
+
+    /* ─── TOAST ──────────────────────────────────────────────────────── */
+    let toastTimer = null;
+    function showToast(msg, type = 'info') {
+        const t = document.getElementById('toast');
+        t.textContent    = msg;
+        t.style.borderColor = type === 'success' ? 'rgba(78,240,184,0.3)'  :
+                              type === 'error'   ? 'rgba(255,77,106,0.3)'  :
+                                                   'rgba(124,106,255,0.3)';
+        t.style.color       = type === 'success' ? '#4ef0b8' :
+                              type === 'error'   ? '#ff4d6a' : '#7c6aff';
+        t.style.transform   = 'translateX(-50%) translateY(0)';
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => { t.style.transform = 'translateX(-50%) translateY(80px)'; }, 3000);
+    }
+
+    /* ─── SCREEN TRANSITIONS ─────────────────────────────────────────── */
+    const ALL_SCREENS = [$connect, $waiting, $video];
+
+    function fadeIn(el) {
+        clearTimeout(goneTimers.get(el));
+        goneTimers.delete(el);
+        el.classList.remove('gone');
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            el.classList.remove('off');
+        }));
+    }
+
+    function fadeOut(el) {
+        el.classList.add('off');
+        clearTimeout(goneTimers.get(el));
+        goneTimers.set(el, setTimeout(() => {
+            el.classList.add('gone');
+            goneTimers.delete(el);
+        }, FADE_MS));
+    }
+
+    function showScreen(name) {
+        const target = { connect: $connect, waiting: $waiting, video: $video }[name];
+
+        // Cleanup saat keluar dari video atau saat full reset
+        if (name !== 'video') {
+            isStreaming = false;
+            isFrozen = false;
+            unfreeze();
+            stopStats();
+            stopFreezeWatch();
+            $tapOver.classList.remove('visible');
+            document.getElementById('freeze-overlay').classList.remove('visible');
+            ['hud-fps','hud-res','hud-bitrate'].forEach(id => {
+                document.getElementById(id).textContent =
+                    id === 'hud-fps' ? '-- FPS' : id === 'hud-res' ? '--' : '-- Mbps';
+            });
+            // Reset video opacity dan srcObject setelah fade selesai
+            $videoEl.style.transition = 'none';
+            $videoEl.style.opacity = '0';
+            clearTimeout(srcObjectTimer);
+            srcObjectTimer = setTimeout(() => { $videoEl.srcObject = null; srcObjectTimer = null; }, FADE_MS);
+        }
+
+        // Fade out semua screen selain target
+        ALL_SCREENS.forEach(el => { if (el !== target) fadeOut(el); });
+        // Video screen selalu visible (tidak perlu fadeIn) — cukup pastikan tidak gone
+        if (name === 'video') {
+            clearTimeout(goneTimers.get($video));
+            goneTimers.delete($video);
+            $video.classList.remove('gone', 'off');
+        } else {
+            fadeIn(target);
+        }
+    }
+
+    /* ─── PEER STATUS CHIP ───────────────────────────────────────────── */
+    function setPeerReady(ready) {
+        $chip.className      = 'chip' + (ready ? ' ready' : '');
+        $chipText.textContent = ready ? 'Ready' : 'Connecting to server...';
+    }
+
+    /* ─── DEVICE NAME HELPER ─────────────────────────────────────────── */
+    function getDeviceName() {
+        const ua = navigator.userAgent;
+        let os = 'Unknown';
+        let browser = 'Unknown';
+
+        // OS detection
+        if (/iPhone/.test(ua))            os = 'iPhone';
+        else if (/iPad/.test(ua))         os = 'iPad';
+        else if (/Android/.test(ua)) {
+            const m = ua.match(/Android [^;]+;\s*([^)]+)\)/);
+            os = m ? m[1].trim().split(' ').slice(0,2).join(' ') : 'Android';
+        }
+        else if (/Windows NT 10/.test(ua)) os = 'Windows 10/11';
+        else if (/Windows NT/.test(ua))    os = 'Windows';
+        else if (/Mac OS X/.test(ua))      os = 'macOS';
+        else if (/Linux/.test(ua))         os = 'Linux';
+        else if (/CrOS/.test(ua))          os = 'ChromeOS';
+
+        // Browser detection
+        if (/Edg\//.test(ua))             browser = 'Edge';
+        else if (/OPR\//.test(ua))        browser = 'Opera';
+        else if (/Chrome\//.test(ua))     browser = 'Chrome';
+        else if (/Firefox\//.test(ua))    browser = 'Firefox';
+        else if (/Safari\//.test(ua))     browser = 'Safari';
+
+        return browser + ' · ' + os;
+    }
+
+    /* ─── PEER INIT ──────────────────────────────────────────────────── */
+    function initPeer() {
+        if (peer && !peer.destroyed) { try { peer.destroy(); } catch(e) {} }
+        peer = null; myID = null;
+        setPeerReady(false);
+
+        const p = new Peer(undefined, {
+            host: location.hostname,
+            port: location.port || (location.protocol === 'https:' ? 443 : 80),
+            path: '/peerjs',
+            secure: location.protocol === 'https:',
+            config: {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' }
+                ]
+            },
+            debug: 0
+        });
+        peer = p;
+
+        p.on('open', id => {
+            myID = id;
+            setPeerReady(true);
+            // Auto-reconnect: kalau senderCode masih ada (dari sesi sebelumnya), reconnect otomatis
+            if (senderCode) {
+                showToast('🔄 Reconnected — re-establishing connection...', 'success');
+                setTimeout(() => {
+                    if (senderCode && p === peer && !p.destroyed) {
+                        doConnect(senderCode);
+                    }
+                }, 500);
+            }
+        });
+
+        /* Sender calls us with the live stream */
+        p.on('call', call => {
+            if (!senderCode) return;
+
+            // Tutup call lama dengan silent flag supaya close handler-nya tidak trigger showScreen
+            if (activeCall) {
+                activeCall._silentClose = true;
+                try { activeCall.close(); } catch(e) {}
+                activeCall = null;
+            }
+            activeCall = call;
+            call.answer();
+
+            let endedBySignal = false;
+            call._endedBySignal = () => { endedBySignal = true; };
+
+            call.on('stream', remoteStream => {
+                playStream(remoteStream, call);
+            });
+
+            call.on('close', () => {
+                if (call._silentClose) return;
+                if (activeCall !== call) return;
+                if (endedBySignal) return;
+                setTimeout(() => {
+                    if (call._silentClose) return;
+                    if (activeCall !== call) return;
+                    if (endedBySignal) return;
+                    if ($tapOver.classList.contains('visible')) return;
+                    if (isFrozen) return; // sudah di-freeze via sinyal, skip
+                    // Freeze frame terakhir kalau lagi streaming
+                    if (isStreaming) {
+                        // Jangan freeze kalau ini normal stop — sinyal stream-ended sudah diterima
+                        if (endedBySignal) {
+                            activeCall = null;
+                            showScreen('waiting');
+                            setWaitDesc('The sender has ended the session.<br>This screen will update automatically<br>when they start sharing again.');
+                            showToast('⏹ Sender ended the session', 'info');
+                            return;
+                        }
+                        freezeLastFrame();
+                        stopStats();
+                        stopFreezeWatch();
+                        $tapOver.classList.remove('visible');
+                        document.getElementById('freeze-overlay').classList.remove('visible');
+                        activeCall = null;
+                        showToast('📴 Sender disconnected — showing last frame', 'info');
+                        return;
+                    }
+                    activeCall = null;
+                    document.getElementById('wait-icon').textContent = '⏳';
+                    document.getElementById('wait-title').textContent = 'Waiting for Sender';
+                    document.getElementById('wait-status-text').textContent = 'Connected · Waiting';
+                    showScreen('waiting');
+                    setWaitDesc('The sender has stopped sharing.<br>Waiting for them to start again...');
+                    showToast('📴 Stream ended — waiting for sender', 'info');
+                }, 350);
+            });
+
+            call.on('error', () => {
+                if (call._silentClose) return;
+                if (activeCall !== call) return;
+                if ($tapOver.classList.contains('visible')) return;
+                if (isStreaming) return;
+                activeCall = null;
+                document.getElementById('wait-icon').textContent = '⏳';
+                document.getElementById('wait-title').textContent = 'Waiting for Sender';
+                document.getElementById('wait-status-text').textContent = 'Connected · Waiting';
+                showScreen('waiting');
+                setWaitDesc('Connection error.<br>Waiting for sender to reconnect...');
+                showToast('❌ Stream error — waiting', 'error');
+            });
+        });
+
+        p.on('error', err => {
+            if (err.type === 'peer-unavailable') {
+                if (withoutPinMode) {
+                    // Without PIN: sender belum online, coba lagi otomatis
+                    showToast('⏳ Sender not ready — retrying...', 'info');
+                    setTimeout(() => {
+                        if (senderCode && p === peer && !p.destroyed) {
+                            doConnect(senderCode);
+                        }
+                    }, 4000);
+                } else {
+                    showToast('❌ Sender not found. Check the code.', 'error');
+                    senderCode = null;
+                    withoutPinMode = false;
+                    showScreen('connect');
+                    resetConnectBtn();
+                }
+            } else if (err.type === 'network' || err.type === 'server-error') {
+                setPeerReady(false);
+                showToast('🔌 Network error — reconnecting...', 'error');
+                setTimeout(() => {
+                    if (p === peer && !p.destroyed) try { p.reconnect(); } catch(e) {}
+                }, 3000);
+            } else {
+                setPeerReady(false);
+                showToast('⚠️ Connection error — retrying...', 'error');
+                setTimeout(() => {
+                    if (p === peer && !p.destroyed) try { p.reconnect(); } catch(e) {}
+                }, 3000);
+            }
+        });
+
+        p.on('disconnected', () => {
+            setPeerReady(false);
+            if (senderCode) {
+                // Tampilkan info di waiting screen kalau lagi di sana
+                const waitTitle = document.getElementById('wait-title');
+                const waitStatusText = document.getElementById('wait-status-text');
+                if (waitTitle && document.getElementById('screen-waiting') &&
+                    !document.getElementById('screen-waiting').classList.contains('gone')) {
+                    waitTitle.textContent = 'Connection Lost';
+                    if (waitStatusText) waitStatusText.textContent = 'Reconnecting...';
+                }
+                showToast('🔌 Network lost — reconnecting...', 'info');
+            }
+            if (!p.destroyed) setTimeout(() => {
+                try { p.reconnect(); } catch(e) {}
+            }, 2000);
+        });
+    }
+
+    // ====== Fixed ID helper — sama persis dengan sender ======
+    function getFixedSenderId() {
+        let h = 0;
+        const s = location.hostname;
+        for (let i = 0; i < s.length; i++) { h = (Math.imul(31, h) + s.charCodeAt(i)) | 0; }
+        return 'wellshare-' + Math.abs(h).toString(36) + '-sender';
+    }
+
+    // Without PIN pakai fixed ID yang derived dari hostname — jadi ID-nya TETEP SAMA walaupun
+    // sender refresh/restart. Beda sama PIN mode yang kodenya acak ulang tiap sender reload.
+    // Makanya begitu koneksi ke sender putus, di sini kita bisa coba reconnect otomatis pakai
+    // ID yang sama sampai sender-nya balik online — gak perlu user refresh manual.
+    function scheduleWithoutPinRetry() {
+        if (withoutPinRetryActive) return; // udah ada retry loop yang jalan, jangan dobel
+        withoutPinRetryActive = true;
+        const tick = () => {
+            if (!withoutPinMode || senderCode) { withoutPinRetryActive = false; return; }
+            doConnect(getFixedSenderId());
+            // Jeda 20 detik — kasih waktu doConnect's retry internal (~18 detik) selesai duluan
+            // sebelum nyoba lagi, biar gak numpuk beberapa attemptConnect() bersamaan.
+            setTimeout(tick, 20000);
+        };
+        setTimeout(tick, 3000);
+    }
+
+    // ====== Receiver Mode Selector ======
+    let receiverMode = 'pin'; // 'pin' | 'nopin'
+
+    function selectReceiverMode(mode) {
+        receiverMode = mode;
+        const pinCard   = document.getElementById('mode-pin-card');
+        const nopinCard = document.getElementById('mode-nopin-card');
+        const pinArea   = document.getElementById('pin-input-area');
+        const nopinArea = document.getElementById('nopin-area');
+
+        if (mode === 'pin') {
+            pinCard.className   = 'mode-card active-pin';
+            nopinCard.className = 'mode-card';
+            pinArea.style.display   = 'flex';
+            nopinArea.style.display = 'none';
+        } else {
+            nopinCard.className = 'mode-card active-nopin';
+            pinCard.className   = 'mode-card';
+            pinArea.style.display   = 'none';
+            nopinArea.style.display = 'flex';
+        }
+    }
+
+    // ====== Without PIN — langsung connect ke fixed sender ID ======
+    function connectWithoutPin() {
+        withoutPinMode = true;
+        const fixedId = getFixedSenderId();
+        doConnect(fixedId);
+    }
+
+    /* ─── CONNECT ────────────────────────────────────────────────────── */
+    function resetConnectBtn() {
+        const btn = document.getElementById('connect-btn');
+        btn.disabled = false;
+        btn.textContent = '📺 Connect to Sender';
+        const wpBtn = document.getElementById('without-pin-btn');
+        if (wpBtn) { wpBtn.disabled = false; wpBtn.textContent = '⚡ Connect Without PIN'; }
+    }
+
+    function connectToSender() {
+        const code = document.getElementById('sender-code-input').value.trim();
+        if (!code || code.length !== 4) {
+            showToast('⚠️ Enter the 4-digit sender code', 'error');
+            return;
+        }
+        withoutPinMode = false;
+        doConnect(code);
+    }
+
+    function doConnect(code) {
+        if (!myID) {
+            showToast('⚠️ Still connecting to server, please wait...', 'error');
+            return;
+        }
+
+        const btn = document.getElementById('connect-btn');
+        const wpBtn = document.getElementById('without-pin-btn');
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ Connecting...'; }
+        if (wpBtn) { wpBtn.disabled = true; wpBtn.textContent = '⏳ Connecting...'; }
+        showToast('🔗 Connecting to sender...', 'info');
+
+        let opened = false;
+        let retryCount = 0;
+        const MAX_RETRIES = 3;
+
+        function attemptConnect() {
+            if (opened || senderCode) return;
+            try {
+                const conn = peer.connect(code, { reliable: true });
+
+                conn.on('open', () => {
+                    opened = true;
+                    withoutPinRetryActive = false; // berhasil konek lagi, matiin retry loop kalau masih jalan
+                    // Send device info: id + human-readable name + connection mode
+                    const devInfo = {
+                        id:   myID,
+                        name: getDeviceName(),
+                        mode: withoutPinMode ? 'nopin' : 'pin'
+                    };
+                    try { conn.send(devInfo); } catch(e) {}
+                    senderCode = code;
+                    const displayCode = withoutPinMode ? 'Without PIN' : code;
+                    document.getElementById('wait-code-badge').textContent = 'Sender: ' + displayCode;
+                    document.getElementById('hud-code').textContent = 'Sender: ' + displayCode;
+                    // Reset waiting screen ke state default (belum tahu apakah sender lagi stream)
+                    document.getElementById('wait-icon').textContent = '⏳';
+                    document.getElementById('wait-title').textContent = 'Waiting for Sender';
+                    document.getElementById('wait-status-text').textContent = 'Connected · Waiting';
+                    setWaitDesc(
+                        'Connected to sender <strong style="color:var(--yellow);' +
+                        'font-family:\'Space Mono\',monospace">' + code + '</strong>.<br>' +
+                        'The stream will appear automatically<br>when the sender starts sharing.'
+                    );
+                    showScreen('waiting');
+                    showToast('✅ Connected — waiting for sender to share', 'success');
+                    resetConnectBtn();
+                });
+
+                conn.on('close', () => {
+                    if (!senderCode) return;
+                    resetConnectBtn();
+                    senderCode = null;
+
+                    // Data connection ke sender putus — biasanya krn sender refresh/restart.
+                    // Bersihin call yang mungkin masih nyangkut biar gak nimpa transisi layar di bawah
+                    // (pola sama persis kayak handler 'kicked' di bawah).
+                    if (activeCall) {
+                        activeCall._silentClose = true;
+                        try { activeCall.close(); } catch(e) {}
+                        activeCall = null;
+                    }
+                    isStreaming = false;
+                    isFrozen = false;
+                    unfreeze();
+                    stopStats();
+                    stopFreezeWatch();
+                    $tapOver.classList.remove('visible');
+                    document.getElementById('freeze-overlay').classList.remove('visible');
+
+                    if (withoutPinMode) {
+                        // Fixed ID sender tetep sama walau dia refresh — bisa auto-reconnect,
+                        // gak perlu user refresh manual.
+                        document.getElementById('wait-icon').textContent = '🔄';
+                        document.getElementById('wait-title').textContent = 'Reconnecting...';
+                        document.getElementById('wait-status-text').textContent = 'Sender restarted';
+                        showScreen('waiting');
+                        setWaitDesc('Lost connection to the sender.<br>Reconnecting automatically...');
+                        showToast('🔄 Lost connection to sender — reconnecting automatically...', 'info');
+                        scheduleWithoutPinRetry();
+                    } else {
+                        // PIN mode: kode 4-digit besar kemungkinan berubah kalau sender refresh
+                        // (di-generate ulang random tiap sender reload) — gak bisa auto-retry pakai
+                        // kode lama, jadi balik ke layar connect dan minta kode baru.
+                        showScreen('connect');
+                        showToast('⚠️ Connection to sender lost — they may have restarted. Enter their new code.', 'error');
+                    }
+                });
+
+                conn.on('data', msg => {
+                    if (msg && msg.type === 'sender-alert') {
+                        // Notifikasi non-fatal dari sender (misal device kedisconnect) —
+                        // gak ngubah state streaming sama sekali, cuma tampilan info di layar
+                        showSenderAlert(msg.code || 'SENDER_ALERT', msg.text || 'Sender reported an issue');
+                        showToast('⚠️ ' + (msg.text || 'Sender reported an issue'), 'error');
+                    }
+                    if (msg === 'stream-active') {
+                        // Sender sudah streaming — ubah teks waiting ke "Connecting..."
+                        // supaya user tahu stream sedang dalam proses ICE negotiation
+                        document.getElementById('wait-icon').textContent = '📡';
+                        document.getElementById('wait-title').textContent = 'Connecting to Stream...';
+                        document.getElementById('wait-status-text').textContent = 'Establishing Connection';
+                        setWaitDesc(
+                            'Sender is live! Establishing connection...<br>' +
+                            'Stream will appear in a few seconds.'
+                        );
+                    }
+                    if (msg === 'stream-ended' || (msg && msg.type === 'stream-ended')) {
+                        // Sinyal stop normal dari sender — kembali ke waiting, bukan freeze
+                        if (activeCall) {
+                            activeCall._endedBySignal = () => {};
+                            activeCall._silentClose = true;
+                            try { activeCall.close(); } catch(e) {}
+                            activeCall = null;
+                        }
+                        isStreaming = false;
+                        isFrozen = false;
+                        unfreeze();
+                        stopStats();
+                        stopFreezeWatch();
+                        $tapOver.classList.remove('visible');
+                        document.getElementById('freeze-overlay').classList.remove('visible');
+                        document.getElementById('wait-icon').textContent = '⏳';
+                        document.getElementById('wait-title').textContent = 'Waiting for Sender';
+                        document.getElementById('wait-status-text').textContent = 'Connected · Waiting';
+                        showScreen('waiting');
+                        setWaitDesc(
+                            'The sender has ended the session.<br>' +
+                            'This screen will update automatically<br>when they start sharing again.'
+                        );
+                        showToast('⏹ Sender ended the session', 'info');
+                    }
+                    if (msg === 'freeze') {
+                        if (isStreaming) {
+                            freezeLastFrame();
+                            showToast('⏸ Stream frozen', 'info');
+                        }
+                    }
+                    if (msg === 'unfreeze') {
+                        if (isFrozen) {
+                            unfreeze();
+                            showToast('▶ Stream resumed', 'info');
+                        }
+                    }
+                    if (msg === 'request-id') {
+                        const devInfo = { id: myID, name: getDeviceName(), mode: withoutPinMode ? 'nopin' : 'pin' };
+                        try { conn.send(devInfo); } catch(e) {}
+                    }
+                    if (msg === 'kicked') {
+                        // Set flag di activeCall supaya call.on('close') handler
+                        // tidak override ke Waiting screen setelah call drop
+                        if (activeCall) activeCall._silentClose = true;
+                        senderCode     = null;
+                        withoutPinMode = false;
+                        if (activeCall) {
+                            try { activeCall.close(); } catch(e) {}
+                            activeCall = null;
+                        }
+                        isStreaming = false;
+                        isFrozen    = false;
+                        unfreeze();
+                        stopStats();
+                        stopFreezeWatch();
+                        $tapOver.classList.remove('visible');
+                        document.getElementById('freeze-overlay').classList.remove('visible');
+                        showScreen('connect');
+                        showToast('🚫 You were disconnected by the sender', 'error');
+                        resetConnectBtn();
+                    }
+                });
+
+                // Retry with backoff
+                setTimeout(() => {
+                    if (!opened && !senderCode) {
+                        retryCount++;
+                        if (retryCount < MAX_RETRIES) {
+                            btn.textContent = '⏳ Retrying (' + retryCount + '/' + MAX_RETRIES + ')...';
+                            showToast('🔄 Retrying... (' + retryCount + '/' + MAX_RETRIES + ')', 'info');
+                            setTimeout(attemptConnect, 1200);
+                        } else {
+                            showToast('❌ Sender not found. Check the code and try again.', 'error');
+                            resetConnectBtn();
+                        }
+                    }
+                }, 5000);
+
+            } catch(e) {
+                showToast('❌ Could not connect. Try again.', 'error');
+                resetConnectBtn();
+            }
+        }
+
+        attemptConnect();
+    }
+
+    /* ─── DISCONNECT ─────────────────────────────────────────────────── */
+    function disconnectAndReset() {
+        senderCode = null;
+        withoutPinMode = false;
+        if (activeCall) { try { activeCall.close(); } catch(e) {} activeCall = null; }
+        // FIX Bug C: reset muted state saat disconnect supaya session baru tidak stale
+        muted = false;
+        $videoEl.muted = false;
+        $videoEl.style.opacity = '0';
+        const muteBtn = document.getElementById('mute-btn');
+        if (muteBtn) muteBtn.textContent = '🔊 Mute';
+        showScreen('connect');
+        showToast('Disconnected', 'info');
+    }
+
+    /* ─── WAIT SCREEN HELPERS ────────────────────────────────────────── */
+    function setWaitDesc(html) {
+        document.getElementById('wait-desc').innerHTML = html;
+    }
+
+    /* ─── PLAY STREAM ────────────────────────────────────────────────── */
+    // Behavior: video langsung play muted di belakang tap overlay (background 55% gelap)
+    // Tap overlay selalu muncul — fungsinya untuk unmute, bukan trigger play
+    // Hasilnya: user lihat stream jalan samar di belakang → tap → full clear + audio
+    function playStream(stream, call) {
+        pendingStream = null;
+        pendingCall   = null;
+
+        // FIX: Cancel timer srcObject = null dari showScreen sebelumnya — inilah penyebab blank!
+        clearTimeout(srcObjectTimer);
+        srcObjectTimer = null;
+
+        // Paksa video screen selalu visible — jangan sampai gone/off
+        clearTimeout(goneTimers.get($video));
+        goneTimers.delete($video);
+        $video.classList.remove('gone', 'off');
+
+        // Set stream ke video element — opacity 0 dulu supaya tidak flash logo browser
+        $videoEl.style.transition = 'none';
+        $videoEl.style.opacity = '0';
+        $videoEl.srcObject = stream;
+        $videoEl.muted = true;
+
+        $videoEl.play()
+            .then(() => {
+                startStats(stream, call);
+                startFreezeWatch(stream);
+
+                // Fade out waiting & connect, video screen tetap visible
+                fadeOut($waiting);
+                fadeOut($connect);
+                clearTimeout(goneTimers.get($video));
+                goneTimers.delete($video);
+                $video.classList.remove('gone', 'off');
+
+                $videoEl.style.transition = 'opacity 1.2s ease';
+                $videoEl.style.opacity = '0.2';
+
+                // Tap overlay muncul di atas video
+                $tapOver.classList.add('visible');
+            })
+            .catch(() => {
+                // Autoplay diblock — tunggu tap
+                pendingStream = stream;
+                pendingCall   = call;
+                // Fade out waiting & connect, biarkan video di belakang
+                fadeOut($waiting);
+                fadeOut($connect);
+                clearTimeout(goneTimers.get($video));
+                goneTimers.delete($video);
+                $video.classList.remove('gone', 'off');
+                $tapOver.classList.add('visible');
+            });
+    }
+
+    function handleTapToPlay() {
+        $tapOver.classList.remove('visible');
+
+        // Paksa waiting & connect fade out — jangan pakai showScreen() karena
+        // showScreen() akan reset stats/freezeWatch/opacity yang sudah jalan
+        fadeOut($waiting);
+        fadeOut($connect);
+        clearTimeout(goneTimers.get($video));
+        goneTimers.delete($video);
+        $video.classList.remove('gone', 'off');
+
+        if (pendingStream) {
+            // Autoplay diblock: video belum play sama sekali
+            const stream = pendingStream;
+            const call   = pendingCall;
+            pendingStream = null;
+            pendingCall   = null;
+
+            $videoEl.muted = false;
+            $videoEl.volume = 0;
+            $videoEl.play()
+                .then(() => {
+                    isStreaming = true;
+                    startStats(stream, call || activeCall);
+                    startFreezeWatch(stream);
+                    $videoEl.style.transition = 'opacity 0.8s ease';
+                    $videoEl.style.opacity = '1';
+                    if (!muted) fadeInAudio();
+                })
+                .catch(() => {
+                    setTimeout(() => $tapOver.classList.add('visible'), 200);
+                });
+        } else {
+            // Normal path: video sudah play muted di 0.2 — langsung fade ke full
+            isStreaming = true;
+            $videoEl.style.transition = 'opacity 0.8s ease';
+            $videoEl.style.opacity = '1';
+            if (!muted) {
+                $videoEl.volume = 0;
+                $videoEl.muted = false;
+                fadeInAudio();
+            }
+        }
+    }
+
+    // Audio fade in dari 0 ke 1 dalam 800ms — smooth tidak jeder
+    function fadeInAudio() {
+        $videoEl.volume = 0;
+        const steps = 40;
+        const interval = 800 / steps;
+        let step = 0;
+        const timer = setInterval(() => {
+            step++;
+            $videoEl.volume = Math.min(1, step / steps);
+            if (step >= steps) clearInterval(timer);
+        }, interval);
+    }
+
+        /* ─── FREEZE WATCH ───────────────────────────────────────────────── */
+    function startFreezeWatch(stream) {
+        stopFreezeWatch();
+        const overlay = document.getElementById('freeze-overlay');
+        freezeInterval = setInterval(() => {
+            const t = stream.getVideoTracks()[0];
+            if (t) overlay.classList.toggle('visible', !t.enabled);
+        }, 300);
+    }
+    function stopFreezeWatch() { clearInterval(freezeInterval); freezeInterval = null; }
+
+    /* ─── SENDER ALERT (mic disconnected, etc — non-fatal info banner) ──── */
+    let senderAlertTimer = null;
+    function showSenderAlert(code, text) {
+        document.getElementById('sender-alert-code').textContent = code;
+        document.getElementById('sender-alert-text').textContent = text;
+        const overlay = document.getElementById('sender-alert-overlay');
+        overlay.classList.add('visible');
+        clearTimeout(senderAlertTimer);
+        senderAlertTimer = setTimeout(() => overlay.classList.remove('visible'), 8000);
+    }
+
+    /* ─── STATS ──────────────────────────────────────────────────────── */
+    let lastBytes = 0, lastStatTime = Date.now();
+
+    function startStats(stream, call) {
+        stopStats();
+        lastBytes = 0; lastStatTime = Date.now();
+
+        statsInterval = setInterval(async () => {
+            const vt = stream.getVideoTracks()[0];
+            if (call?.peerConnection) {
+                try {
+                    const stats = await call.peerConnection.getStats();
+                    let fps = null, height = null, bytes = 0;
+                    stats.forEach(r => {
+                        if (r.type === 'inbound-rtp' && r.kind === 'video') {
+                            fps    = r.framesPerSecond ?? null;
+                            height = r.frameHeight ?? null;
+                            bytes  = r.bytesReceived ?? 0;
+                        }
+                    });
+                    if (fps    !== null) document.getElementById('hud-fps').textContent = Math.round(fps) + ' FPS';
+                    if (height)         document.getElementById('hud-res').textContent = height + 'p';
+                    else if (vt) { const s = vt.getSettings(); if (s.height) document.getElementById('hud-res').textContent = s.height + 'p'; }
+                    const now = Date.now(), dt = (now - lastStatTime) / 1000;
+                    if (dt > 0 && bytes > lastBytes)
+                        document.getElementById('hud-bitrate').textContent =
+                            ((bytes - lastBytes) * 8 / 1e6 / dt).toFixed(1) + ' Mbps';
+                    lastBytes = bytes; lastStatTime = now;
+                    return;
+                } catch(e) {}
+            }
+            if (vt) {
+                const s = vt.getSettings();
+                document.getElementById('hud-fps').textContent = (Math.round(s.frameRate) || '--') + ' FPS';
+                if (s.height) document.getElementById('hud-res').textContent = s.height + 'p';
+            }
+        }, 1000);
+    }
+    function stopStats() { clearInterval(statsInterval); statsInterval = null; }
+
+    /* ─── HUD AUTO-HIDE ──────────────────────────────────────────────── */
+    function showHud() {
+        $video.classList.add('hud-visible');
+        $video.style.cursor = 'default';
+        clearTimeout(hudTimer);
+        hudTimer = setTimeout(() => {
+            $video.classList.remove('hud-visible');
+            $video.style.cursor = 'none';
+        }, 3000);
+    }
+    $video.addEventListener('mousemove',  showHud);
+    $video.addEventListener('touchstart', showHud, { passive: true });
+    $video.addEventListener('click', e => {
+        if (e.target.closest('.hud-btn')) return;
+        if (!('ontouchstart' in window)) toggleFullscreen();
+    });
+
+    /* ─── CONTROLS ───────────────────────────────────────────────────── */
+    function toggleFullscreen() {
+        if (document.fullscreenElement) document.exitFullscreen();
+        else document.documentElement.requestFullscreen?.();
+    }
+
+    // FIX Bug C: toggleMute sekarang sync ke state `muted` yang persisten
+    function toggleMute() {
+        muted = !muted;
+        $videoEl.muted = muted;
+        if (!muted) $videoEl.volume = 1; // pastikan volume normal saat unmute
+        document.getElementById('mute-btn').textContent = muted ? '🔇 Unmute' : '🔊 Mute';
+    }
+
+    function exitToConnect() {
+        senderCode = null;
+        withoutPinMode = false;
+        if (activeCall) { try { activeCall.close(); } catch(e) {} activeCall = null; }
+        muted = false;
+        $videoEl.muted = false;
+        const muteBtn = document.getElementById('mute-btn');
+        if (muteBtn) muteBtn.textContent = '🔊 Mute';
+        showScreen('connect');
+        showToast('Disconnected', 'info');
+        // Re-init peer supaya bisa connect lagi — peer lama sudah stale setelah disconnect
+        initPeer();
+    }
+    document.addEventListener('keydown', e => {
+        if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+        if (e.key === 'm' || e.key === 'M') toggleMute();
+        if (e.key === 'Escape' && document.fullscreenElement) document.exitFullscreen();
+    });
+
+    /* ─── INPUT HANDLERS ─────────────────────────────────────────────── */
+    const $input = document.getElementById('sender-code-input');
+    $input.addEventListener('input',   function() { this.value = this.value.replace(/\D/g,'').slice(0,4); });
+    $input.addEventListener('keydown', e => { if (e.key === 'Enter') connectToSender(); });
+
+    /* ─── BOOT ───────────────────────────────────────────────────────── */
+    initPeer();
+    </script>
+</body>
+</html>

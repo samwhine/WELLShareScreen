@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WELL Share Screen</title>
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="apple-touch-icon" href="/favicon.ico">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0a0a0f;
+            --surface: #12121a;
+            --surface2: #1a1a28;
+            --border: rgba(255, 255, 255, 0.07);
+            --accent: #7c6aff;
+            --accent2: #4ef0b8;
+            --text: #e8e8f0;
+            --muted: #555570;
+            --yellow: #ffd166;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'DM Sans', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(124, 106, 255, 0.04) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(124, 106, 255, 0.04) 1px, transparent 1px);
+            background-size: 40px 40px;
+            pointer-events: none;
+        }
+
+        body::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background:
+                radial-gradient(ellipse at 60% 40%, rgba(124, 106, 255, 0.1) 0%, transparent 60%),
+                radial-gradient(ellipse at 20% 80%, rgba(78, 240, 184, 0.06) 0%, transparent 50%);
+            pointer-events: none;
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            max-width: 480px;
+            padding: 24px;
+            text-align: center;
+        }
+
+        .logo {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .logo-icon {
+            width: 44px;
+            height: 44px;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+        }
+
+        .logo-text {
+            font-family: 'Space Mono', monospace;
+            font-size: 20px;
+            font-weight: 700;
+            background: linear-gradient(90deg, #fff, var(--accent));
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .tagline {
+            color: var(--muted);
+            font-size: 13px;
+            letter-spacing: 2.5px;
+            text-transform: uppercase;
+            margin-bottom: 48px;
+        }
+
+        .question {
+            font-size: 15px;
+            color: var(--muted);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            margin-bottom: 20px;
+        }
+
+        .cards {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 40px;
+        }
+
+        .role-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 32px 20px;
+            cursor: pointer;
+            text-decoration: none;
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 14px;
+            transition: all 0.25s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .role-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(124, 106, 255, 0.3), transparent);
+        }
+
+        .role-card:hover {
+            transform: translateY(-4px);
+            border-color: rgba(124, 106, 255, 0.35);
+            box-shadow: 0 6px 20px rgba(124, 106, 255, 0.1);
+        }
+
+        .role-card.receiver:hover {
+            border-color: rgba(78, 240, 184, 0.35);
+            box-shadow: 0 6px 20px rgba(78, 240, 184, 0.08);
+        }
+
+        .role-icon {
+            font-size: 40px;
+            line-height: 1;
+        }
+
+        .role-title {
+            font-family: 'Space Mono', monospace;
+            font-size: 15px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+
+        .role-desc {
+            font-size: 12px;
+            color: var(--muted);
+            line-height: 1.5;
+        }
+
+        .role-badge {
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            padding: 4px 10px;
+            border-radius: 20px;
+            background: rgba(124, 106, 255, 0.12);
+            color: var(--accent);
+            border: 1px solid rgba(124, 106, 255, 0.2);
+        }
+
+        .role-card.receiver .role-badge {
+            background: rgba(78, 240, 184, 0.1);
+            color: var(--accent2);
+            border-color: rgba(78, 240, 184, 0.2);
+        }
+
+        .footer {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .footer span {
+            color: var(--accent);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="logo">
+            <div class="logo-icon">📡</div>
+            <span class="logo-text">WELL Share Screen</span>
+        </div>
+        <div class="tagline">WELL Share Screen · Live Streaming</div>
+
+        <div class="question">Who are you?</div>
+
+        <div class="cards">
+            <a href="/sender" class="role-card sender">
+                <div class="role-icon">🖥️</div>
+                <div class="role-title">Sender</div>
+                <div class="role-desc">Share your screen to a TV or other display</div>
+                <div class="role-badge">Sender</div>
+            </a>
+            <a href="/receiver" class="role-card receiver">
+                <div class="role-icon">📺</div>
+                <div class="role-title">Receiver</div>
+                <div class="role-desc">Receive screen display from Sender</div>
+                <div class="role-badge">Receiver</div>
+            </a>
+        </div>
+
+        <div class="footer">
+            Powered by <span>WELL Share Screen</span> · WebRTC P2P
+        </div>
+    </div>
+</body>
+
+</html>

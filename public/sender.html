@@ -1,0 +1,3660 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WELL Share Screen — Sender</title>
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="apple-touch-icon" href="/favicon.ico">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0a0a0f;
+            --surface: #12121a;
+            --surface2: #1a1a28;
+            --border: rgba(255, 255, 255, 0.07);
+            --border2: rgba(255, 255, 255, 0.12);
+            --accent: #7c6aff;
+            --accent2: #4ef0b8;
+            --danger: #ff4d6a;
+            --text: #e8e8f0;
+            --muted: #555570;
+            --green: #4ef0b8;
+            --yellow: #ffd166;
+            --radius: 14px;
+        }
+
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 13px;
+        }
+
+        /* Grid bg */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(124, 106, 255, 0.04) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(124, 106, 255, 0.04) 1px, transparent 1px);
+            background-size: 40px 40px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        body::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background:
+                radial-gradient(ellipse at 60% 40%, rgba(124, 106, 255, 0.07) 0%, transparent 60%),
+                radial-gradient(ellipse at 20% 80%, rgba(78, 240, 184, 0.04) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* ── MAIN LAYOUT ─────────────────────────────────────────────── */
+        .app {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: 10px 16px 8px;
+            gap: 8px;
+        }
+
+        /* ── TOPBAR ──────────────────────────────────────────────────── */
+        .topbar {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            flex-shrink: 0;
+        }
+
+        .logo {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            border-radius: 9px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+
+        .logo-text {
+            font-family: 'Space Mono', monospace;
+            font-size: 16px;
+            font-weight: 700;
+            background: linear-gradient(90deg, #fff, var(--accent));
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            color: var(--muted);
+            font-size: 11px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .topbar-right {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* Status bar in topbar */
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 8px 14px;
+        }
+
+        .status-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--muted);
+            transition: all 0.3s;
+            flex-shrink: 0;
+        }
+
+        .status-dot.connecting {
+            background: var(--yellow);
+            animation: blink 1s infinite;
+        }
+
+        .status-dot.live {
+            background: var(--green);
+            box-shadow: 0 0 8px var(--green);
+        }
+
+        .status-dot.error {
+            background: var(--danger);
+        }
+
+        .status-text {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .status-badge {
+            font-family: 'Space Mono', monospace;
+            font-size: 10px;
+            padding: 3px 8px;
+            border-radius: 5px;
+            background: var(--surface2);
+            color: var(--muted);
+        }
+
+        /* ── 3-COLUMN GRID ───────────────────────────────────────────── */
+        .cols {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 280px 1fr 1fr;
+            grid-template-rows: auto 1fr;
+            grid-template-areas:
+                "sender video audiotop"
+                "sender audiobottom audiobottom";
+            gap: 8px;
+            min-height: 0;
+            /* allow shrinking */
+        }
+
+        .col-sender { grid-area: sender; }
+        .col-video { grid-area: video; align-self: start; }
+        .col-audiotop { grid-area: audiotop; align-self: start; }
+        .col-audiobottom { grid-area: audiobottom; min-height: 0; }
+
+        .col {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            min-height: 0;
+        }
+
+        .col-header {
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 2.5px;
+            text-transform: uppercase;
+            color: var(--muted);
+            padding: 8px 14px 7px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+
+        .col-body {
+            flex: 1;
+            padding: 10px 14px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border) transparent;
+        }
+
+        .col-body::-webkit-scrollbar {
+            width: 3px;
+        }
+
+        .col-body::-webkit-scrollbar-thumb {
+            background: var(--border2);
+            border-radius: 2px;
+        }
+
+        /* ── LEFT COL — Code + Actions + Preview ─────────────────────── */
+        .code-display {
+            text-align: center;
+            padding: 12px 0 16px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 14px;
+        }
+
+        .code-number {
+            font-family: 'Space Mono', monospace;
+            font-size: 52px;
+            font-weight: 700;
+            color: var(--yellow);
+            letter-spacing: 10px;
+            line-height: 1;
+        }
+
+        .code-hint {
+            font-size: 11px;
+            color: var(--muted);
+            margin-top: 6px;
+        }
+
+        /* Buttons */
+        .btn {
+            width: 100%;
+            padding: 13px;
+            border: none;
+            border-radius: 12px;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent), #5a4be0);
+            color: white;
+            box-shadow: 0 2px 10px rgba(124, 106, 255, 0.2);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 16px rgba(124, 106, 255, 0.3);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        .btn-danger {
+            background: rgba(255, 77, 106, 0.1);
+            border: 1px solid rgba(255, 77, 106, 0.3);
+            color: var(--danger);
+            margin-top: 8px;
+        }
+
+        .btn-danger:hover {
+            background: rgba(255, 77, 106, 0.2);
+        }
+
+        .btns-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .btn-half {
+            padding: 11px;
+            border-radius: 11px;
+            border: 1px solid var(--border);
+            background: var(--surface2);
+            color: var(--text);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            transition: all 0.2s;
+        }
+
+        .btn-half:hover {
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        /* Preview */
+        .preview-area {
+            position: relative;
+            background: #000;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+            aspect-ratio: 16/9;
+            margin-top: 12px;
+            display: none;
+        }
+
+        .preview-area.active {
+            display: block;
+        }
+
+        #preview-video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .preview-overlay {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            background: rgba(0, 0, 0, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 3px 8px;
+            font-family: 'Space Mono', monospace;
+            font-size: 10px;
+            color: var(--green);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .live-pill {
+            position: absolute;
+            top: 6px;
+            left: 6px;
+            background: rgba(255, 77, 106, 0.9);
+            border-radius: 5px;
+            padding: 2px 7px;
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 3px;
+        }
+
+        .live-dot {
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: white;
+            animation: blink 0.8s infinite;
+        }
+
+        /* Stats */
+        .stats-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            margin-top: 10px;
+        }
+
+        .stat-chip {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 9px;
+            padding: 8px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-family: 'Space Mono', monospace;
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--accent2);
+            display: block;
+        }
+
+        .stat-label {
+            font-size: 9px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Connected Devices */
+        .receiver-section {
+            margin-top: 12px;
+        }
+
+        .receiver-section-title {
+            font-size: 9px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .receiver-section-title::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border);
+        }
+
+        /* Switch link */
+        .switch-link {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            color: var(--muted);
+            font-size: 12px;
+            text-decoration: none;
+            padding: 9px 16px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            margin-top: 10px;
+            transition: all 0.2s;
+        }
+
+        .switch-link:hover {
+            color: var(--accent2);
+            border-color: rgba(78, 240, 184, 0.3);
+        }
+
+        /* ── SETTINGS ────────────────────────────────────────────────── */
+        .setting-group {
+            margin-bottom: 12px;
+        }
+
+        .setting-group-title {
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .setting-group-title::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border);
+        }
+
+        /* ====== EQUALIZER ====== */
+        .eq-tab-btn {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            color: var(--muted);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 5px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .eq-tab-btn:hover { border-color: rgba(124,106,255,0.3); color: var(--text); }
+        .eq-tab-btn.active {
+            background: rgba(124,106,255,0.14);
+            border-color: rgba(124,106,255,0.4);
+            color: var(--accent);
+        }
+        .eq-small-btn {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            color: var(--muted);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 10px;
+            font-weight: 600;
+            padding: 5px 9px;
+            border-radius: 7px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+        .eq-small-btn:hover { border-color: rgba(124,106,255,0.3); color: var(--text); }
+        .eq-disabled-note {
+            text-align: center;
+            padding: 18px 10px;
+            color: var(--muted);
+            font-size: 11px;
+        }
+        .eq-band-row {
+            display: grid;
+            grid-template-columns: 22px 80px 1fr 1fr 1fr 22px;
+            align-items: center;
+            gap: 6px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            padding: 4px 7px;
+            font-size: 10px;
+        }
+        .eq-band-row .eq-band-color {
+            width: 12px; height: 12px; border-radius: 50%;
+            margin: 0 auto;
+        }
+        .eq-band-row select, .eq-band-row input[type="number"] {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text);
+            font-family: 'Space Mono', monospace;
+            font-size: 11px;
+            border-radius: 6px;
+            padding: 4px 6px;
+            width: 100%;
+            min-width: 0;
+        }
+        .eq-band-row .eq-band-field-label {
+            font-size: 8px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: block;
+            margin-bottom: 2px;
+        }
+        .eq-band-remove {
+            background: rgba(255,77,106,0.1);
+            border: 1px solid rgba(255,77,106,0.25);
+            color: var(--danger);
+            border-radius: 6px;
+            cursor: pointer;
+            width: 22px; height: 22px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 12px;
+            margin: 0 auto;
+        }
+        .eq-band-remove:hover { background: rgba(255,77,106,0.2); }
+
+        .settings-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .setting-item {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 7px 10px;
+            transition: border-color 0.2s;
+        }
+
+        .setting-item:focus-within {
+            border-color: rgba(124, 106, 255, 0.4);
+        }
+
+        .setting-label {
+            font-size: 9px;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: 5px;
+        }
+
+        .setting-select {
+            width: 100%;
+            background: transparent;
+            border: none;
+            color: var(--text);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 12px;
+            font-weight: 500;
+            outline: none;
+            cursor: pointer;
+            appearance: none;
+            -webkit-appearance: none;
+        }
+
+        .setting-select option {
+            background: #1a1a28;
+            color: var(--text);
+        }
+
+        /* Dipakai buat <select> yang berdiri sendiri di luar .setting-item (contoh: dropdown preset
+           EQ & Video Quality). .setting-select aslinya transparent + border:none, itu pas kalau
+           dibungkus .setting-item yang udah punya box sendiri — tapi kalau berdiri sendiri di tengah
+           flex row, jadinya keliatan kayak teks biasa, orang gak ngeh ini bisa diklik/ada isinya.
+           Class ini nambahin box + panah dropdown biar affordance-nya jelas ini elemen interaktif. */
+        .preset-select {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 8px 30px 8px 12px;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23888899' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            transition: border-color 0.2s, background-color 0.2s;
+        }
+        .preset-select:hover {
+            border-color: rgba(124, 106, 255, 0.35);
+            background-color: #1a1a28;
+        }
+        .preset-select:focus {
+            border-color: rgba(124, 106, 255, 0.5);
+        }
+
+        /* Slider */
+        .slider-row {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 8px 10px;
+            margin-bottom: 6px;
+        }
+
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+
+        .slider-label {
+            font-size: 9px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+
+        .slider-value {
+            font-family: 'Space Mono', monospace;
+            font-size: 12px;
+            color: var(--accent2);
+        }
+
+        input[type=range] {
+            width: 100%;
+            height: 3px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: var(--border);
+            border-radius: 999px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            background: var(--accent);
+            border-radius: 50%;
+            box-shadow: 0 0 6px rgba(124, 106, 255, 0.5);
+        }
+
+        input[type=range]::-moz-range-thumb {
+            width: 14px;
+            height: 14px;
+            background: var(--accent);
+            border-radius: 50%;
+            border: none;
+        }
+
+        .slider-minmax {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 4px;
+        }
+
+        .slider-minmax span {
+            font-size: 9px;
+            color: var(--muted);
+        }
+
+        /* Toggle rows */
+        .toggle-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 7px 10px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            margin-bottom: 4px;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+
+        .toggle-row:hover {
+            border-color: rgba(124, 106, 255, 0.3);
+        }
+
+        .toggle-label {
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .toggle-desc {
+            font-size: 10px;
+            color: var(--muted);
+            margin-top: 1px;
+        }
+
+        .toggle-switch {
+            width: 34px;
+            height: 20px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            position: relative;
+            transition: background 0.2s;
+            flex-shrink: 0;
+        }
+
+        .toggle-switch.on {
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 14px;
+            height: 14px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.2s;
+        }
+
+        .toggle-switch.on::after {
+            transform: translateX(14px);
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(80px);
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 10px 18px;
+            font-size: 12px;
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            z-index: 999;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+        }
+
+        .toast.show {
+            transform: translateX(-50%) translateY(0);
+        }
+
+        .toast.success {
+            border-color: rgba(78, 240, 184, 0.3);
+            color: var(--green);
+        }
+
+        .toast.error {
+            border-color: rgba(255, 77, 106, 0.3);
+            color: var(--danger);
+        }
+
+        .toast.info {
+            border-color: rgba(124, 106, 255, 0.3);
+            color: var(--accent);
+        }
+
+        @keyframes blink {
+            50% {
+                opacity: 0.2;
+            }
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* ── MOBILE fallback ─────────────────────────────────────────── */
+        @media (max-width: 900px) {
+
+            html,
+            body {
+                overflow-y: auto;
+                height: auto;
+            }
+
+            .app {
+                height: auto;
+                overflow: visible;
+                padding: 16px;
+            }
+
+            .cols {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto;
+                grid-template-areas:
+                    "sender"
+                    "video"
+                    "audiotop"
+                    "audiobottom";
+            }
+
+            .col-video, .col-audiotop {
+                align-self: auto;
+            }
+
+            #audio-controls-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .col {
+                overflow: visible;
+            }
+
+            .col-body {
+                overflow: visible;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app">
+
+        <!-- TOPBAR -->
+        <div class="topbar">
+            <div class="logo">
+                <div class="logo-icon">📡</div>
+                <span class="logo-text">WELL Share Screen</span>
+            </div>
+            <div class="topbar-right">
+                <div class="status-bar">
+                    <div class="status-dot" id="status-dot"></div>
+                    <span class="status-text" id="status-text">Ready — Press Start Screen Share</span>
+                    <span class="status-badge" id="status-badge">IDLE</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3 COLUMNS -->
+        <div class="cols">
+
+            <!-- COL 1: Code + Actions + Preview + Connected Devices -->
+            <div class="col col-sender">
+                <div class="col-header">📡 Sender Code</div>
+                <div class="col-body">
+                    <!-- Connection Mode Selector -->
+                    <div style="margin-bottom:14px">
+                        <div
+                            style="font-size:9px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;display:flex;align-items:center;gap:6px">
+                            Connection Mode
+                            <span style="flex:1;height:1px;background:var(--border)"></span>
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">
+                            <!-- PIN Mode -->
+                            <button id="mode-pin-btn" onclick="selectConnectionMode('pin')" style="
+                            padding:10px 8px;border-radius:11px;cursor:pointer;transition:all 0.2s;
+                            font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;
+                            display:flex;flex-direction:column;align-items:center;gap:5px;
+                            border:1px solid rgba(124,106,255,0.5);
+                            background:rgba(124,106,255,0.15);color:var(--accent);
+                        ">
+                                <span style="font-size:18px">🔒</span>
+                                <span>PIN Code</span>
+                                <span
+                                    style="font-size:9px;font-weight:400;color:var(--muted);letter-spacing:0.3px">Secure
+                                    · Private</span>
+                            </button>
+                            <!-- Without PIN Mode -->
+                            <button id="mode-nopin-btn" onclick="selectConnectionMode('nopin')" style="
+                            padding:10px 8px;border-radius:11px;cursor:pointer;transition:all 0.2s;
+                            font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;
+                            display:flex;flex-direction:column;align-items:center;gap:5px;
+                            border:1px solid var(--border);
+                            background:var(--surface2);color:var(--muted);
+                        ">
+                                <span style="font-size:18px">⚡</span>
+                                <span>Without PIN</span>
+                                <span style="font-size:9px;font-weight:400;color:var(--muted);letter-spacing:0.3px">Easy
+                                    · Multi-device</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="code-display">
+                        <div class="code-number" id="my-peer-code">····</div>
+                        <div class="code-hint" id="code-hint-text">Enter this code on the receiver device</div>
+                        <div id="code-hint-extra"
+                            style="display:none;margin-top:6px;font-size:10px;color:var(--muted);line-height:1.5">
+                            Devices connect automatically — or use the PIN above for manual connect
+                        </div>
+                    </div>
+
+                    <!-- Source selector -->
+                    <div id="source-selector" style="margin-bottom:10px">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+                            <button id="src-screen-btn" onclick="selectSource('screen')" style="
+                            padding:10px 8px;border-radius:11px;border:1px solid rgba(124,106,255,0.5);
+                            background:rgba(124,106,255,0.15);color:var(--accent);
+                            font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;
+                            cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:5px;
+                        ">🖥️ Screen</button>
+                            <button id="src-webcam-btn" onclick="selectSource('webcam')" style="
+                            padding:10px 8px;border-radius:11px;border:1px solid var(--border);
+                            background:var(--surface2);color:var(--muted);
+                            font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;
+                            cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:5px;
+                        ">📷 Webcam</button>
+                        </div>
+                        <!-- Camera select (webcam only) -->
+                        <div id="camera-select-wrap" class="hidden" style="
+                        background:var(--surface2);border:1px solid var(--border);
+                        border-radius:10px;padding:8px 12px;margin-bottom:8px;
+                    ">
+                            <div class="setting-label" style="margin-bottom:5px">📷 Camera</div>
+                            <select id="camera-select" class="setting-select">
+                                <option value="">Loading cameras...</option>
+                            </select>
+                        </div>
+                        <!-- Mic device select (shown when audio mode is mic or both) -->
+                        <div id="mic-select-wrap" class="hidden" style="
+                        background:var(--surface2);border:1px solid var(--border);
+                        border-radius:10px;padding:8px 12px;margin-bottom:8px;
+                    ">
+                            <div class="setting-label" style="margin-bottom:5px">🎙️ Microphone Device</div>
+                            <select id="mic-device-select" class="setting-select">
+                                <option value="">Default Microphone</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Start -->
+                    <div id="action-start">
+                        <button class="btn btn-primary" id="start-btn" onclick="startStream()">▶ Start Screen
+                            Share</button>
+                    </div>
+
+                    <!-- Live controls -->
+                    <div id="action-live" class="hidden">
+                        <button class="btn btn-half" style="width:100%;margin-bottom:8px" onclick="togglePause()"
+                            id="pause-btn">⏸ Pause</button>
+                        <button class="btn btn-danger" onclick="stopStream()">⏹ Stop Sharing</button>
+                    </div>
+
+                    <!-- Preview (shows when live) -->
+                    <div class="preview-area" id="preview-area">
+                        <video id="preview-video" autoplay muted playsinline></video>
+                        <div class="preview-overlay"><span id="fps-display">-- FPS</span></div>
+                        <div class="live-pill">
+                            <div class="live-dot"></div>LIVE
+                        </div>
+                    </div>
+
+                    <!-- Live Stats -->
+                    <div id="stats-for-device" class="hidden" style="font-size:10.5px;color:var(--muted);margin-bottom:6px"></div>
+                    <div class="stats-row hidden" id="stats-row">
+                        <div class="stat-chip">
+                            <span class="stat-value" id="stat-fps">--</span>
+                            <span class="stat-label">FPS</span>
+                        </div>
+                        <div class="stat-chip">
+                            <span class="stat-value" id="stat-res">--</span>
+                            <span class="stat-label">Res</span>
+                        </div>
+                        <div class="stat-chip">
+                            <span class="stat-value" id="stat-bitrate">--</span>
+                            <span class="stat-label">Mbps</span>
+                        </div>
+                        <div class="stat-chip">
+                            <span class="stat-value" id="stat-time">0:00</span>
+                            <span class="stat-label">Time</span>
+                        </div>
+                        <div class="stat-chip">
+                            <span class="stat-value" id="stat-limit">--</span>
+                            <span class="stat-label">Limit</span>
+                        </div>
+                    </div>
+
+                    <!-- Connected Devices -->
+                    <div id="receiver-list-wrap" style="display:none">
+                        <div class="receiver-section-title" style="margin-top:14px">Connected Devices</div>
+                        <div id="receiver-list"></div>
+                    </div>
+
+                    <a href="/receiver" class="switch-link">📺 Switch to Receiver</a>
+                </div>
+            </div>
+
+            <!-- COL 2: Video Settings -->
+            <div class="col col-video">
+                <div class="col-header">🎬 Video Settings</div>
+                <div class="col-body">
+                    <!-- Video Quality Preset — niru pola preset EQ: Max/Default/Low bawaan,
+                         + Custom yang otomatis kepilih & ke-save sendiri pas ada slider yang diubah manual.
+                         Ditaruh paling atas biar alurnya: pilih preset dulu, detailnya keliatan di bawah. -->
+                    <div class="setting-group-title">Quality Preset</div>
+                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;flex-wrap:wrap">
+                        <select id="video-preset-select" class="setting-select preset-select" style="flex:1;min-width:140px"></select>
+                        <button type="button" class="eq-small-btn" onclick="saveVideoPresetAs()">💾 Save As...</button>
+                        <button type="button" class="eq-small-btn" id="video-delete-preset-btn" onclick="deleteVideoPreset()">🗑️ Delete</button>
+                    </div>
+
+                    <!-- Sama pola kayak noise-live-info di Audio Settings — tapi ini nyala TERUS selama
+                         live (bukan cuma sekali muncul abis ganti), biar orang gak lupa resolusi/codec
+                         itu kelock sampai stream di-restart, dan gak salah kira semua field langsung live. -->
+                    <div id="video-live-info" class="hidden"
+                        style="margin-bottom:12px;padding:8px 12px;background:rgba(255,209,102,0.07);border:1px solid rgba(255,209,102,0.2);border-radius:9px;font-size:11px;color:var(--yellow);display:flex;align-items:center;gap:7px">
+                        <span>⚠️</span>
+                        <span>Resolution, codec & capture mode are locked while live — stop and start again to change them. Bitrate, FPS & priority still apply instantly.</span>
+                    </div>
+
+                    <div class="setting-group">
+                        <div class="settings-grid">
+                            <div class="setting-item">
+                                <div class="setting-label">🎬 Frame Rate</div>
+                                <select id="fps-select" class="setting-select">
+                                    <option value="24">24 FPS — Cinematic</option>
+                                    <option value="30">30 FPS — Standard</option>
+                                    <option value="60" selected>60 FPS — Smooth</option>
+                                </select>
+                            </div>
+                            <div class="setting-item">
+                                <div class="setting-label">📐 Resolution</div>
+                                <select id="res-select" class="setting-select">
+                                    <option value="720">720p — HD</option>
+                                    <option value="1080" selected>1080p — Full HD</option>
+                                    <option value="1440">1440p — QHD</option>
+                                    <option value="2160">2160p — 4K</option>
+                                </select>
+                            </div>
+                            <div class="setting-item">
+                                <div class="setting-label">🎞️ Codec</div>
+                                <select id="codec-select" class="setting-select">
+                                    <option value="h264" selected>H264 — Best Compat</option>
+                                    <option value="vp9">VP9 — Better Compress</option>
+                                    <option value="vp8">VP8 — Fallback</option>
+                                    <option value="auto">Auto — Browser Default</option>
+                                </select>
+                            </div>
+                            <div class="setting-item" id="capture-mode-row">
+                                <div class="setting-label">📡 Capture Mode</div>
+                                <select id="capture-select" class="setting-select">
+                                    <option value="screen" selected>Entire Screen</option>
+                                    <option value="window">Specific Window</option>
+                                    <option value="tab">Browser Tab</option>
+                                </select>
+                            </div>
+                            <div class="setting-item">
+                                <div class="setting-label">🎯 Priority</div>
+                                <select id="priority-select" class="setting-select">
+                                    <option value="quality">Quality — keep resolution sharp</option>
+                                    <option value="balanced" selected>Balanced — adapt both</option>
+                                    <option value="smoothness">Smoothness — no delay</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="slider-row">
+                        <div class="slider-header">
+                            <span class="slider-label">📶 Max Video Bitrate</span>
+                            <span class="slider-value" id="bitrate-label">10 Mbps</span>
+                        </div>
+                        <input type="range" id="bitrate-slider" min="1" max="30" value="10" step="1">
+                        <div class="slider-minmax">
+                            <span>1 Mbps (low)</span>
+                            <span>30 Mbps (max)</span>
+                        </div>
+                        <div id="bitrate-per-device-note" class="hidden" style="margin-top:6px;font-size:10.5px;color:var(--muted)"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- COL 3 TOP: Audio Source/Quality (short — sejajar tinggi sama Video) -->
+            <div class="col col-audiotop">
+                <div class="col-header">🔊 Audio Settings</div>
+                <div class="col-body">
+                    <div class="setting-group">
+                        <div class="settings-grid" style="margin-bottom:10px">
+                            <div class="setting-item">
+                                <div class="setting-label">🎙️ Audio Source</div>
+                                <select id="audio-select" class="setting-select">
+                                    <option value="none" selected>No Audio</option>
+                                    <option value="system">System Audio</option>
+                                    <option value="mic">Microphone</option>
+                                    <option value="both">System + Mic</option>
+                                </select>
+                            </div>
+                            <div class="setting-item">
+                                <div class="setting-label">🔊 Audio Quality</div>
+                                <select id="audio-quality-select" class="setting-select">
+                                    <option value="48000" selected>48 kHz — Studio</option>
+                                    <option value="44100">44.1 kHz — CD</option>
+                                    <option value="32000">32 kHz — Standard</option>
+                                    <option value="16000">16 kHz — Voice</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- COL 4 (BOTTOM, spans Video+Audio columns): Audio Processing — gain, noise, EQ -->
+            <div class="col col-audiobottom">
+                <div class="col-header">🎛️ Audio Processing &amp; Equalizer</div>
+                <div class="col-body">
+                    <!-- Audio options (shown when audio enabled) -->
+                    <div id="audio-options" class="hidden">
+                        <div class="slider-row">
+                            <div class="slider-header">
+                                <span class="slider-label">🔈 Max Audio Bitrate</span>
+                                <span class="slider-value" id="audio-bitrate-label">128 kbps</span>
+                            </div>
+                            <input type="range" id="audio-bitrate-slider" min="32" max="320" value="128" step="32">
+                            <div class="slider-minmax">
+                                <span>32 kbps (voice)</span>
+                                <span>320 kbps (lossless)</span>
+                            </div>
+                        </div>
+
+                        <!-- System Volume | Mic Gain | Noise Processing — 3 kolom, manfaatin lebar panel
+                             biar gak numpuk panjang ke bawah (cuma EQ yang sengaja dibiarin panjang) -->
+                        <div id="audio-controls-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start">
+                            <!-- Kolom kiri: System Volume + Mic Gain ditumpuk vertikal -->
+                            <div style="display:flex;flex-direction:column;gap:8px">
+                                <!-- System Gain — tampil kalau mode system atau both -->
+                                <div id="sys-gain-row" class="slider-row hidden" style="margin-bottom:0">
+                                    <div class="slider-header">
+                                        <span class="slider-label">🔊 System Volume</span>
+                                    </div>
+                                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
+                                        <span class="slider-value" id="sys-gain-label">0 dB</span>
+                                        <div style="display:flex;align-items:center;gap:6px;margin-left:auto">
+                                            <button id="reset-sys-btn" onclick="resetSysGain()" title="Reset to default (0 dB)" style="
+                                            background:rgba(255,255,255,0.05);border:1px solid var(--border);
+                                            border-radius:6px;color:var(--muted);font-family:'DM Sans',sans-serif;
+                                            font-size:13px;font-weight:600;padding:3px 7px;cursor:pointer;
+                                            line-height:1;transition:all 0.2s
+                                        " onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'"
+                                                onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">↺</button>
+                                            <button id="mute-sys-btn" onclick="toggleMuteSys()" style="
+                                            background:rgba(255,255,255,0.05);border:1px solid var(--border);
+                                            border-radius:6px;color:var(--muted);font-family:'DM Sans',sans-serif;
+                                            font-size:10px;font-weight:600;padding:3px 9px;cursor:pointer;
+                                            letter-spacing:0.5px;transition:all 0.2s;white-space:nowrap
+                                        " onmouseover="this.style.borderColor='rgba(255,77,106,0.4)';this.style.color='var(--danger)'"
+                                                onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">🔊
+                                                Mute</button>
+                                        </div>
+                                    </div>
+                                    <input type="range" id="sys-gain-slider" min="-20" max="20" value="0" step="1">
+                                    <div class="slider-minmax">
+                                        <span>-20 dB</span>
+                                        <span>+20 dB</span>
+                                    </div>
+                                </div>
+
+                                <!-- Mic Gain — hanya tampil kalau mode mic atau both -->
+                                <div id="mic-gain-row" class="slider-row hidden" style="margin-bottom:0">
+                                    <div class="slider-header">
+                                        <span class="slider-label">🎙️ Mic Gain</span>
+                                    </div>
+                                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
+                                        <span class="slider-value" id="mic-gain-label">0 dB</span>
+                                        <div style="display:flex;align-items:center;gap:6px;margin-left:auto">
+                                            <button id="reset-mic-btn" onclick="resetMicGain()" title="Reset to default (0 dB)" style="
+                                            background:rgba(255,255,255,0.05);border:1px solid var(--border);
+                                            border-radius:6px;color:var(--muted);font-family:'DM Sans',sans-serif;
+                                            font-size:13px;font-weight:600;padding:3px 7px;cursor:pointer;
+                                            line-height:1;transition:all 0.2s
+                                        " onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'"
+                                                onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">↺</button>
+                                            <button id="mute-mic-btn" onclick="toggleMuteMic()" style="
+                                            background:rgba(255,255,255,0.05);border:1px solid var(--border);
+                                            border-radius:6px;color:var(--muted);font-family:'DM Sans',sans-serif;
+                                            font-size:10px;font-weight:600;padding:3px 9px;cursor:pointer;
+                                            letter-spacing:0.5px;transition:all 0.2s;white-space:nowrap
+                                        " onmouseover="this.style.borderColor='rgba(255,77,106,0.4)';this.style.color='var(--danger)'"
+                                                onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">🔊
+                                                Mute</button>
+                                        </div>
+                                    </div>
+                                    <input type="range" id="mic-gain-slider" min="-20" max="20" value="0" step="1">
+                                    <div class="slider-minmax">
+                                        <span>-20 dB</span>
+                                        <span>+20 dB</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Kolom kanan: Noise Processing -->
+                            <div>
+                                <div class="setting-group-title" style="margin-top:0">
+                                    Noise Processing
+                                    <span style="
+                                    font-size:8px;font-weight:600;letter-spacing:1px;text-transform:uppercase;
+                                    padding:2px 7px;border-radius:20px;
+                                    background:rgba(78,240,184,0.08);color:var(--accent2);
+                                    border:1px solid rgba(78,240,184,0.15);
+                                    font-family:'DM Sans',sans-serif;
+                                ">mic only</span>
+                                </div>
+                                <div id="noise-options">
+                                    <div class="toggle-row" onclick="toggleOpt('echo')">
+                                        <div>
+                                            <div class="toggle-label">Echo Cancellation</div>
+                                            <div class="toggle-desc">Remove mic echo</div>
+                                        </div>
+                                        <div class="toggle-switch" id="echo-switch"></div>
+                                    </div>
+                                    <div class="toggle-row" onclick="toggleOpt('noise')">
+                                        <div>
+                                            <div class="toggle-label">Noise Suppression</div>
+                                            <div class="toggle-desc">Reduce background mic noise</div>
+                                        </div>
+                                        <div class="toggle-switch" id="noise-switch"></div>
+                                    </div>
+                                    <div class="toggle-row" id="agc-row" onclick="toggleOpt('gain')">
+                                        <div>
+                                            <div class="toggle-label">Auto Gain Control</div>
+                                            <div class="toggle-desc" id="agc-desc">Normalize mic volume automatically</div>
+                                        </div>
+                                        <div class="toggle-switch" id="gain-switch"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Info: perubahan audio setting berlaku saat stream berikutnya -->
+                        <div id="noise-live-info" class="hidden"
+                            style="margin-top:8px;padding:8px 12px;background:rgba(255,209,102,0.07);border:1px solid rgba(255,209,102,0.2);border-radius:9px;font-size:11px;color:var(--yellow);display:flex;align-items:center;gap:7px">
+                            <span>⚠️</span>
+                            <span>Changes will apply on the next stream</span>
+                        </div>
+
+                        <!-- ============ EQUALIZER ============ -->
+                        <div id="eq-section" style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px">
+                            <div class="setting-group-title">Equalizer</div>
+
+                            <!-- Tab switch: Mic EQ / System EQ — each has its own independent band chain -->
+                            <div id="eq-tabs" style="display:flex;gap:6px;margin-bottom:8px">
+                                <button type="button" class="eq-tab-btn active" id="eq-tab-mic" onclick="switchEQTab('mic')">🎙️ Mic EQ</button>
+                                <button type="button" class="eq-tab-btn" id="eq-tab-system" onclick="switchEQTab('system')">🔊 System EQ</button>
+                            </div>
+
+                            <!-- Preset row -->
+                            <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap">
+                                <select id="eq-preset-select" class="setting-select preset-select" style="flex:1;min-width:140px"></select>
+                                <button type="button" class="eq-small-btn" onclick="saveEQPreset()">💾 Save As...</button>
+                                <button type="button" class="eq-small-btn" id="eq-delete-preset-btn" onclick="deleteEQPreset()">🗑️ Delete</button>
+                                <button type="button" class="eq-small-btn" onclick="resetEQFlat()">↺ Flat</button>
+                                <button type="button" class="eq-small-btn" onclick="addEQBandDefault()">➕ Add Band</button>
+                            </div>
+
+                            <!-- Curve canvas -->
+                            <div style="position:relative;background:#0a0a12;border:1px solid var(--border);border-radius:10px;overflow:hidden">
+                                <canvas id="eq-canvas" style="width:100%;height:200px;display:block;cursor:crosshair"></canvas>
+                                <div style="position:absolute;top:4px;left:8px;font-size:8px;color:var(--muted);font-family:'Space Mono',monospace;letter-spacing:0.5px;pointer-events:none">
+                                    CLICK = ADD BAND · DRAG = FREQ/GAIN · SCROLL = Q · DBL-CLICK = REMOVE
+                                </div>
+                                <div id="eq-hover-readout" style="position:absolute;top:4px;right:8px;font-size:9px;color:var(--accent2);font-family:'Space Mono',monospace;pointer-events:none"></div>
+                            </div>
+
+                            <!-- Band list (numeric, buat presisi) -->
+                            <div id="eq-band-list" style="margin-top:7px;display:flex;flex-direction:column;gap:4px;max-height:180px;overflow-y:auto"></div>
+                        </div>
+                    </div>
+
+                    <!-- Placeholder when no audio -->
+                    <div id="audio-placeholder"
+                        style="text-align:center;padding:40px 0;color:var(--muted);font-size:12px">
+                        <div style="font-size:32px;margin-bottom:10px">🔇</div>
+                        No audio — select a source above to enable audio options
+                    </div>
+                </div>
+            </div>
+
+        </div><!-- /cols -->
+
+    </div><!-- /app -->
+
+    <div class="toast" id="toast"></div>
+
+    <script src="peerjs.min.js"></script>
+    <script>
+        let peer = null;
+        let peerFixed = null; // peer untuk mode Without PIN (fixed ID)
+        let sysDisplayStream = null; // referensi getDisplayMedia stream untuk system audio (webcam mode)
+        let rawSysAudioTracks = []; // track audio mentah (screen mode) yang di-removeTrack dari screenStream — perlu di-stop() manual saat handleStop()
+        let rawMicTracks = []; // track mic mentah hasil getUserMedia() — GainNode/AudioContext gak nge-stop track ini otomatis, harus di-stop() manual
+        let currentStream = null;
+        let activeCalls = [];
+        let activeDataConns = [];   // track data connections to notify receivers on stop
+        let waitingReceivers = [];  // receivers that connected before stream was active
+        let knownReceivers = [];    // ALL receiver IDs ever registered — persistent across stop/start
+        // receiverMeta: Map<peerId, {name, mode, ip}>
+        const receiverMeta = new Map();
+        let statsInterval = null;
+        let startTime = null;
+        let paused = false;
+        let lastBytesSent = 0;
+        let lastStatsTime = Date.now();
+        let isLive = false;
+        let sourceMode = 'screen'; // 'screen' | 'webcam'
+
+        // Toggle states — semua default OFF
+        const toggleStates = { echo: false, noise: false, gain: false };
+
+        // Mic gain state
+        let micGainNode = null;
+        let micSourceNode = null; // node sumber mic yang nyambung ke micGainNode — disconnect/reconnect ini buat hot-swap device tanpa restart stream
+        let micAudioCtx = null;
+        let sysAudioCtx = null; // AudioContext terpisah khusus chain system-audio — jangan dicampur micAudioCtx, supaya gak ke-close pas mode 'both' (mic + system) diproses
+        let micMuted = false;
+        let micMutedPrevGain = 0; // simpan nilai gain sebelum mute
+
+        // System gain state
+        let sysGainNode = null;
+        let sysSourceNode = null; // node sumber system-audio yang nyambung ke sysGainNode (lewat EQ chain) — buat konsistensi sama micSourceNode
+        let sysMuted = false;
+        let sysMutedPrevGain = 0; // simpan nilai gain sebelum mute
+
+        // ====== UI Helpers ======
+        function setStatus(dot, text, badge) {
+            document.getElementById('status-dot').className = 'status-dot ' + dot;
+            document.getElementById('status-text').textContent = text;
+            document.getElementById('status-badge').textContent = badge;
+        }
+
+        function showToast(msg, type = 'info') {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.className = 'toast ' + type;
+            t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 3000);
+        }
+
+        function setLive(yes) {
+            isLive = yes;
+            document.getElementById('action-start').classList.toggle('hidden', yes);
+            document.getElementById('source-selector').classList.toggle('hidden', yes);
+            document.getElementById('action-live').classList.toggle('hidden', !yes);
+            document.getElementById('preview-area').classList.toggle('active', yes);
+            document.getElementById('stats-row').classList.toggle('hidden', !yes);
+
+            // Resolution, codec & capture mode butuh capture/SDP baru buat bener2 kepakai — gak
+            // bisa live. Dropdown-nya di-disable + banner nyala selama live, biar gak ada yang
+            // ngira udah ganti padahal stream aktualnya masih di setting lama.
+            const resSelect = document.getElementById('res-select');
+            const codecSelect = document.getElementById('codec-select');
+            const captureSelect = document.getElementById('capture-select');
+            resSelect.disabled = yes;
+            codecSelect.disabled = yes;
+            captureSelect.disabled = yes;
+            resSelect.closest('.setting-item').style.opacity = yes ? '0.5' : '1';
+            codecSelect.closest('.setting-item').style.opacity = yes ? '0.5' : '1';
+            captureSelect.closest('.setting-item').style.opacity = yes ? '0.5' : '1';
+            document.getElementById('video-live-info').classList.toggle('hidden', !yes);
+        }
+
+        // ====== Mute Mic toggle ======
+        function toggleMuteMic() {
+            micMuted = !micMuted;
+            const btn = document.getElementById('mute-mic-btn');
+            const slider = document.getElementById('mic-gain-slider');
+
+            if (micMuted) {
+                // Simpan gain sebelumnya, set ke 0 (silence)
+                micMutedPrevGain = parseInt(slider.value);
+                if (micGainNode) micGainNode.gain.value = 0;
+                btn.textContent = '🔇 Unmute';
+                btn.style.background = 'rgba(255,77,106,0.12)';
+                btn.style.borderColor = 'rgba(255,77,106,0.35)';
+                btn.style.color = 'var(--danger)';
+                btn.onmouseover = null;
+                btn.onmouseout = null;
+                if (slider) slider.disabled = true;
+                document.getElementById('mic-gain-row').style.opacity = '0.5';
+                showToast('🔇 Mic muted', 'info');
+            } else {
+                // Restore gain ke nilai sebelumnya
+                if (micGainNode) micGainNode.gain.value = Math.pow(10, micMutedPrevGain / 20);
+                btn.textContent = '🔊 Mute';
+                btn.style.background = 'rgba(255,255,255,0.05)';
+                btn.style.borderColor = 'var(--border)';
+                btn.style.color = 'var(--muted)';
+                btn.onmouseover = function () { this.style.borderColor = 'rgba(255,77,106,0.4)'; this.style.color = 'var(--danger)'; };
+                btn.onmouseout = function () { this.style.borderColor = 'var(--border)'; this.style.color = 'var(--muted)'; };
+                // Re-enable slider hanya kalau AGC juga off
+                if (!toggleStates.gain) {
+                    if (slider) slider.disabled = false;
+                    document.getElementById('mic-gain-row').style.opacity = '1';
+                }
+                showToast('🔊 Mic unmuted', 'info');
+            }
+        }
+
+        // ====== Mute System audio toggle ======
+        function toggleMuteSys() {
+            sysMuted = !sysMuted;
+            const btn = document.getElementById('mute-sys-btn');
+            const slider = document.getElementById('sys-gain-slider');
+
+            if (sysMuted) {
+                sysMutedPrevGain = parseInt(slider.value);
+                if (sysGainNode) sysGainNode.gain.value = 0;
+                btn.textContent = '🔇 Unmute';
+                btn.style.background = 'rgba(255,77,106,0.12)';
+                btn.style.borderColor = 'rgba(255,77,106,0.35)';
+                btn.style.color = 'var(--danger)';
+                btn.onmouseover = null;
+                btn.onmouseout = null;
+                if (slider) slider.disabled = true;
+                document.getElementById('sys-gain-row').style.opacity = '0.5';
+                showToast('🔇 System audio muted', 'info');
+            } else {
+                if (sysGainNode) sysGainNode.gain.value = Math.pow(10, sysMutedPrevGain / 20);
+                btn.textContent = '🔊 Mute';
+                btn.style.background = 'rgba(255,255,255,0.05)';
+                btn.style.borderColor = 'var(--border)';
+                btn.style.color = 'var(--muted)';
+                btn.onmouseover = function () { this.style.borderColor = 'rgba(255,77,106,0.4)'; this.style.color = 'var(--danger)'; };
+                btn.onmouseout = function () { this.style.borderColor = 'var(--border)'; this.style.color = 'var(--muted)'; };
+                if (slider) slider.disabled = false;
+                document.getElementById('sys-gain-row').style.opacity = '1';
+                showToast('🔊 System audio unmuted', 'info');
+            }
+        }
+
+        // ====== Reset Mic Gain to default (0 dB) ======
+        function resetMicGain() {
+            const slider = document.getElementById('mic-gain-slider');
+            slider.value = 0;
+            document.getElementById('mic-gain-label').textContent = '0 dB';
+            if (micMuted) {
+                // Kalau lagi mute, sekalian unmute supaya beneran balik ke kondisi default
+                micMutedPrevGain = 0;
+                toggleMuteMic();
+            } else if (micGainNode) {
+                micGainNode.gain.value = 1; // 0 dB = gain 1
+            }
+            showToast('↺ Mic gain di-reset ke 0 dB', 'info');
+        }
+
+        // ====== Reset System Volume to default (0 dB) ======
+        function resetSysGain() {
+            const slider = document.getElementById('sys-gain-slider');
+            slider.value = 0;
+            document.getElementById('sys-gain-label').textContent = '0 dB';
+            if (sysMuted) {
+                sysMutedPrevGain = 0;
+                toggleMuteSys();
+            } else if (sysGainNode) {
+                sysGainNode.gain.value = 1; // 0 dB = gain 1
+            }
+            showToast('↺ System volume di-reset ke 0 dB', 'info');
+        }
+
+        // ====== Toggle switches ======
+        function toggleOpt(key) {
+            // Kalau AGC mau dinyalain tapi mic gain tidak di 0dB, block dan tampilkan info
+            if (key === 'gain' && !toggleStates.gain) {
+                const gainSlider = document.getElementById('mic-gain-slider');
+                if (gainSlider && parseInt(gainSlider.value) !== 0) {
+                    showToast('⚠️ Set mic gain to 0 dB before enabling AGC', 'info');
+                    return;
+                }
+            }
+            toggleStates[key] = !toggleStates[key];
+            document.getElementById(key + '-switch').classList.toggle('on', toggleStates[key]);
+
+            // Kalau AGC dinyalain, disable gain slider
+            if (key === 'gain') {
+                const gainSlider = document.getElementById('mic-gain-slider');
+                const gainRow = document.getElementById('mic-gain-row');
+                if (gainSlider) gainSlider.disabled = toggleStates.gain;
+                if (gainRow) gainRow.style.opacity = toggleStates.gain ? '0.4' : '1';
+                document.getElementById('agc-desc').textContent = toggleStates.gain
+                    ? 'Normalize mic volume automatically — gain slider disabled'
+                    : 'Normalize mic volume automatically';
+            }
+
+            // Tampilkan info "berlaku saat stream berikutnya" kalau lagi live
+            if (isLive && (key === 'echo' || key === 'noise' || key === 'gain')) {
+                document.getElementById('noise-live-info').classList.remove('hidden');
+            }
+        }
+
+        // Show/hide audio options based on audio mode
+        document.getElementById('audio-select').addEventListener('change', function () {
+            const hasAudio = this.value !== 'none';
+            document.getElementById('audio-options').classList.toggle('hidden', !hasAudio);
+            const ph = document.getElementById('audio-placeholder');
+            if (ph) ph.classList.toggle('hidden', hasAudio);
+
+            // Tampilkan mic gain hanya kalau mode mic atau both
+            const hasMic = this.value === 'mic' || this.value === 'both';
+            document.getElementById('mic-gain-row').classList.toggle('hidden', !hasMic);
+            document.getElementById('noise-options').classList.toggle('hidden', !hasMic);
+
+            // Tampilkan system gain hanya kalau mode system atau both
+            const hasSys = this.value === 'system' || this.value === 'both';
+            document.getElementById('sys-gain-row').classList.toggle('hidden', !hasSys);
+
+            // Show mic device selector when mic is involved, populate if first time
+            const micWrap = document.getElementById('mic-select-wrap');
+            if (hasMic) {
+                micWrap.classList.remove('hidden');
+                populateMics();
+            } else {
+                micWrap.classList.add('hidden');
+            }
+
+            // Fix Bug 6: disable all 3 toggles (including AGC) for system/both
+            if (this.value === 'system' || this.value === 'both') {
+                if (toggleStates.echo) { toggleStates.echo = false; document.getElementById('echo-switch').classList.remove('on'); }
+                if (toggleStates.noise) { toggleStates.noise = false; document.getElementById('noise-switch').classList.remove('on'); }
+                if (toggleStates.gain) { toggleStates.gain = false; document.getElementById('gain-switch').classList.remove('on'); }
+            }
+
+            // Saat system only: sembunyikan noise processing section
+            if (this.value === 'system') {
+                document.getElementById('noise-options').classList.add('hidden');
+            }
+
+            // Tampilkan warning kalau lagi live — perubahan audio source tidak real-time
+            if (isLive) {
+                document.getElementById('noise-live-info').classList.remove('hidden');
+            }
+
+            updateEQTabAvailability();
+        });
+
+        // Bitrate sliders
+        document.getElementById('bitrate-slider').addEventListener('input', function () {
+            document.getElementById('bitrate-label').textContent = this.value + ' Mbps';
+        });
+        document.getElementById('audio-bitrate-slider').addEventListener('input', function () {
+            document.getElementById('audio-bitrate-label').textContent = this.value + ' kbps';
+        });
+
+        // Warning kalau audio quality diubah saat lagi live
+        document.getElementById('audio-quality-select').addEventListener('change', function () {
+            if (isLive) document.getElementById('noise-live-info').classList.remove('hidden');
+        });
+
+        // Fix 7: Mic gain slider — real-time update GainNode + mutex dengan AGC
+        document.getElementById('mic-gain-slider').addEventListener('input', function () {
+            const dB = parseInt(this.value);
+            document.getElementById('mic-gain-label').textContent = (dB >= 0 ? '+' : '') + dB + ' dB';
+
+            // Update GainNode real-time kalau lagi streaming
+            if (micGainNode) {
+                micGainNode.gain.value = Math.pow(10, dB / 20);
+            }
+
+            // Kalau gain digeser dari 0, matiin AGC otomatis
+            if (dB !== 0 && toggleStates.gain) {
+                toggleStates.gain = false;
+                document.getElementById('gain-switch').classList.remove('on');
+                document.getElementById('agc-desc').textContent = 'Normalize mic volume automatically';
+                const gainRow = document.getElementById('mic-gain-row');
+                if (gainRow) gainRow.style.opacity = '1';
+                showToast('ℹ️ AGC disabled automatically — mic gain is active', 'info');
+            }
+        });
+
+        // Sys gain slider — real-time update GainNode
+        document.getElementById('sys-gain-slider').addEventListener('input', function () {
+            const dB = parseInt(this.value);
+            document.getElementById('sys-gain-label').textContent = (dB >= 0 ? '+' : '') + dB + ' dB';
+            if (sysGainNode) {
+                sysGainNode.gain.value = Math.pow(10, dB / 20);
+            }
+        });
+
+        // ====== Source Mode Toggle (Screen / Webcam) ======
+        async function selectSource(mode) {
+            if (isLive) { showToast('⚠️ Stop the stream before switching source', 'info'); return; }
+            sourceMode = mode;
+
+            const screenBtn = document.getElementById('src-screen-btn');
+            const webcamBtn = document.getElementById('src-webcam-btn');
+            const cameraWrap = document.getElementById('camera-select-wrap');
+            const startBtn = document.getElementById('start-btn');
+            const captureRow = document.getElementById('capture-mode-row');
+
+            if (mode === 'screen') {
+                screenBtn.style.cssText += ';border-color:rgba(124,106,255,0.5);background:rgba(124,106,255,0.15);color:var(--accent)';
+                webcamBtn.style.cssText += ';border-color:var(--border);background:var(--surface2);color:var(--muted)';
+                cameraWrap.classList.add('hidden');
+                startBtn.textContent = '▶ Start Screen Share';
+                if (captureRow) captureRow.style.display = '';
+                setStatus('', 'Ready — Press Start Screen Share', 'IDLE');
+            } else {
+                webcamBtn.style.cssText += ';border-color:rgba(78,240,184,0.5);background:rgba(78,240,184,0.1);color:var(--accent2)';
+                screenBtn.style.cssText += ';border-color:var(--border);background:var(--surface2);color:var(--muted)';
+                cameraWrap.classList.remove('hidden');
+                startBtn.textContent = '▶ Start Webcam';
+                if (captureRow) captureRow.style.display = 'none';
+                setStatus('', 'Ready — Press Start Webcam', 'IDLE');
+                await populateCameras();
+            }
+        }
+
+        async function populateCameras() {
+            const sel = document.getElementById('camera-select');
+            sel.innerHTML = '<option value="">Detecting cameras...</option>';
+            try {
+                // Need permission first to get labels
+                const tmp = await navigator.mediaDevices.getUserMedia({ video: true });
+                tmp.getTracks().forEach(t => t.stop());
+
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const cams = devices.filter(d => d.kind === 'videoinput');
+                sel.innerHTML = cams.map((d, i) =>
+                    `<option value="${d.deviceId}">${d.label || 'Camera ' + (i + 1)}</option>`
+                ).join('');
+                if (cams.length === 0) sel.innerHTML = '<option value="">No cameras found</option>';
+            } catch (e) {
+                sel.innerHTML = '<option value="">Camera access denied</option>';
+                showToast('⚠️ Camera access denied', 'error');
+            }
+        }
+
+        async function populateMics() {
+            const sel = document.getElementById('mic-device-select');
+            sel.innerHTML = '<option value="">Detecting microphones...</option>';
+            try {
+                // Need permission first to get labels
+                const tmp = await navigator.mediaDevices.getUserMedia({ audio: true });
+                tmp.getTracks().forEach(t => t.stop());
+
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const mics = devices.filter(d => d.kind === 'audioinput');
+                sel.innerHTML = '<option value="">Default Microphone</option>' +
+                    mics.map((d, i) =>
+                        `<option value="${d.deviceId}">${d.label || 'Microphone ' + (i + 1)}</option>`
+                    ).join('');
+                if (mics.length === 0) sel.innerHTML = '<option value="">No microphones found</option>';
+            } catch (e) {
+                sel.innerHTML = '<option value="">Microphone access denied</option>';
+                showToast('⚠️ Microphone access denied', 'error');
+            }
+        }
+
+        // ====== Get Stream ======
+        async function getStream() {
+            const fps = parseInt(document.getElementById('fps-select').value);
+            const res = parseInt(document.getElementById('res-select').value);
+            const audioMode = document.getElementById('audio-select').value;
+            const captureMode = document.getElementById('capture-select').value;
+            const sampleRate = parseInt(document.getElementById('audio-quality-select').value);
+
+            const resMap = { 720: [1280, 720], 1080: [1920, 1080], 1440: [2560, 1440], 2160: [3840, 2160] };
+            const [w, h] = resMap[res] || [1920, 1080];
+
+            // ── WEBCAM MODE ──────────────────────────────────────────
+            if (sourceMode === 'webcam') {
+                const deviceId = document.getElementById('camera-select').value;
+                const videoConstraints = {
+                    width: { ideal: w },
+                    height: { ideal: h },
+                    frameRate: { ideal: fps, max: fps },
+                };
+                if (deviceId) videoConstraints.deviceId = { exact: deviceId };
+
+                // Cleanup AudioContext lama
+                if (micAudioCtx) { try { micAudioCtx.close(); } catch (e) { } micAudioCtx = null; }
+                micGainNode = null;
+                micSourceNode = null;
+                eqLive.mic = null;
+                if (rawMicTracks.length) { rawMicTracks.forEach(t => t.stop()); rawMicTracks = []; }
+                if (sysAudioCtx) { try { sysAudioCtx.close(); } catch (e) { } sysAudioCtx = null; }
+                sysGainNode = null;
+                sysSourceNode = null;
+                eqLive.system = null;
+
+                // Ambil video dari webcam/virtual cam dulu (tanpa audio)
+                let webcamStream;
+                try {
+                    webcamStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
+                } catch (e) {
+                    showToast('⚠️ Failed to open camera: ' + e.message, 'error');
+                    throw e;
+                }
+
+                // ── System audio (webcam + system atau both) ─────────────
+                // Capture system audio via getDisplayMedia — video: false supaya tidak capture screen
+                if (audioMode === 'system' || audioMode === 'both') {
+                    try {
+                        // video: true karena beberapa browser tolak getDisplayMedia dengan video: false
+                        // video track langsung di-stop setelah dapat audio
+                        const sysStream = await navigator.mediaDevices.getDisplayMedia({
+                            video: true,
+                            audio: {
+                                echoCancellation: false,
+                                noiseSuppression: false,
+                                autoGainControl: false,
+                                googEchoCancellation: false,
+                                googNoiseSuppression: false,
+                                googAutoGainControl: false,
+                                googHighpassFilter: false,
+                            }
+                        });
+                        sysDisplayStream = sysStream; // simpan referensi global untuk cleanup di handleStop()
+                        // Stop video track — kita hanya butuh audio
+                        sysStream.getVideoTracks().forEach(t => t.stop());
+
+                        // FIX: kalau user klik Stop di browser bar, audio track dari
+                        // getDisplayMedia akan ended — tangkap ini dan stop seluruh stream
+                        sysStream.getAudioTracks().forEach(t => {
+                            t.onended = () => {
+                                showToast('🖥️ System audio share stopped by browser', 'info');
+                                handleStop();
+                            };
+                        });
+
+                        const audioTracks = sysStream.getAudioTracks();
+                        if (audioTracks.length === 0) {
+                            showToast('⚠️ No system audio track — centang "Share system audio" di dialog', 'info');
+                        } else {
+                            // Apply system gain via GainNode
+                            const sysSampleRate = parseInt(document.getElementById('audio-quality-select').value);
+                            if (sysAudioCtx) { try { sysAudioCtx.close(); } catch (e) { } }
+                            sysAudioCtx = new AudioContext({ sampleRate: sysSampleRate });
+                            sysSourceNode = sysAudioCtx.createMediaStreamSource(sysStream);
+                            sysGainNode = sysAudioCtx.createGain();
+                            const sysDest = sysAudioCtx.createMediaStreamDestination();
+                            const sysDB = parseInt(document.getElementById('sys-gain-slider').value);
+                            sysGainNode.gain.value = sysMuted ? 0 : Math.pow(10, sysDB / 20);
+                            eqConnectChain('system', sysAudioCtx, sysSourceNode, sysGainNode);
+                            sysGainNode.connect(sysDest);
+                            sysDest.stream.getAudioTracks().forEach(t => webcamStream.addTrack(t));
+                        }
+                    } catch (e) {
+                        showToast('⚠️ System audio denied, continuing without it', 'info');
+                    }
+                }
+
+                // ── Mic audio (webcam + mic atau both) ───────────────────
+                if (audioMode === 'mic' || audioMode === 'both') {
+                    const selectedMicId = document.getElementById('mic-device-select').value;
+                    const micConstraints = {
+                        echoCancellation: toggleStates.echo,
+                        noiseSuppression: toggleStates.noise,
+                        autoGainControl: toggleStates.gain,
+                        sampleRate: sampleRate,
+                        channelCount: 2,
+                    };
+                    if (selectedMicId) micConstraints.deviceId = { exact: selectedMicId };
+
+                    try {
+                        const rawMicStream = await navigator.mediaDevices.getUserMedia({ audio: micConstraints });
+                        rawMicTracks = rawMicStream.getAudioTracks(); // simpan biar bisa di-stop() manual nanti
+                        // Notify (gak auto-stop) kalau mic-nya kedisconnect/dicabut di tengah jalan
+                        rawMicTracks.forEach(t => {
+                            t.onended = () => {
+                                showToast('🎤 Microphone disconnected', 'error');
+                                sendSenderAlert('MIC_DISCONNECTED', "Sender's microphone was disconnected");
+                            };
+                        });
+                        micAudioCtx = new AudioContext({ sampleRate });
+                        micSourceNode = micAudioCtx.createMediaStreamSource(rawMicStream);
+                        micGainNode = micAudioCtx.createGain();
+                        const dest = micAudioCtx.createMediaStreamDestination();
+                        const dB = parseInt(document.getElementById('mic-gain-slider').value);
+                        micGainNode.gain.value = micMuted ? 0 : Math.pow(10, dB / 20);
+                        eqConnectChain('mic', micAudioCtx, micSourceNode, micGainNode);
+                        micGainNode.connect(dest);
+                        dest.stream.getAudioTracks().forEach(t => webcamStream.addTrack(t));
+                    } catch (e) {
+                        showToast('⚠️ Microphone access denied, continuing without mic', 'info');
+                    }
+                }
+
+                return webcamStream;
+            }
+
+            // ── SCREEN MODE (original logic) ─────────────────────────
+            const videoConstraints = {
+                cursor: 'always',
+                frameRate: { ideal: fps, max: fps },
+                width: { ideal: w },
+                height: { ideal: h },
+            };
+
+            const displayOptions = { video: videoConstraints };
+            if (captureMode === 'tab') displayOptions.preferCurrentTab = true;
+            else if (captureMode === 'window') displayOptions.preferCurrentTab = false;
+
+            // Mic constraints — for getUserMedia
+            const micConstraints = {
+                echoCancellation: toggleStates.echo,
+                noiseSuppression: toggleStates.noise,
+                autoGainControl: toggleStates.gain,
+                sampleRate: sampleRate,
+                channelCount: 2,
+            };
+            const selectedMicId = document.getElementById('mic-device-select').value;
+            if (selectedMicId) micConstraints.deviceId = { exact: selectedMicId };
+
+            let screenStream;
+
+            // System audio: explicitly disable ALL processing to prevent
+            // echo cancellation / noise suppression / AGC from browser interfering
+            if (audioMode === 'system' || audioMode === 'both') {
+                displayOptions.audio = {
+                    echoCancellation: false,
+                    noiseSuppression: false,
+                    autoGainControl: false,
+                    googEchoCancellation: false,
+                    googNoiseSuppression: false,
+                    googAutoGainControl: false,
+                    googHighpassFilter: false,
+                };
+                screenStream = await navigator.mediaDevices.getDisplayMedia(displayOptions);
+
+                // Apply system gain via GainNode
+                const sysAudioTracks = screenStream.getAudioTracks();
+                if (sysAudioTracks.length > 0) {
+                    if (sysAudioCtx) { try { sysAudioCtx.close(); } catch (e) { } }
+                    sysAudioCtx = new AudioContext({ sampleRate });
+                    const rawSysStream = new MediaStream(sysAudioTracks);
+                    sysSourceNode = sysAudioCtx.createMediaStreamSource(rawSysStream);
+                    sysGainNode = sysAudioCtx.createGain();
+                    const sysDest = sysAudioCtx.createMediaStreamDestination();
+                    const sysDB = parseInt(document.getElementById('sys-gain-slider').value);
+                    sysGainNode.gain.value = sysMuted ? 0 : Math.pow(10, sysDB / 20);
+                    eqConnectChain('system', sysAudioCtx, sysSourceNode, sysGainNode);
+                    sysGainNode.connect(sysDest);
+                    // FIX: ganti track mentah dengan track hasil GainNode supaya
+                    // fader/mute system audio beneran ngefek ke audio yang dikirim
+                    // (sebelumnya track asli yang dikirim, GainNode-nya gak terpakai)
+                    sysAudioTracks.forEach(t => screenStream.removeTrack(t));
+                    rawSysAudioTracks = sysAudioTracks; // simpan biar bisa di-stop() manual di handleStop()
+                    sysDest.stream.getAudioTracks().forEach(t => screenStream.addTrack(t));
+                }
+            } else {
+                displayOptions.audio = false;
+                screenStream = await navigator.mediaDevices.getDisplayMedia(displayOptions);
+                // No system audio — cleanup sys GainNode/context lama
+                sysGainNode = null;
+                sysSourceNode = null;
+                eqLive.system = null;
+                if (sysAudioCtx) { try { sysAudioCtx.close(); } catch (e) { } sysAudioCtx = null; }
+            }
+
+            if (audioMode === 'mic' || audioMode === 'both') {
+                try {
+                    const rawMicStream = await navigator.mediaDevices.getUserMedia({ audio: micConstraints });
+                    rawMicTracks = rawMicStream.getAudioTracks(); // simpan biar bisa di-stop() manual nanti
+                    // Notify (gak auto-stop) kalau mic-nya kedisconnect/dicabut di tengah jalan
+                    rawMicTracks.forEach(t => {
+                        t.onended = () => {
+                            showToast('🎤 Microphone disconnected', 'error');
+                            sendSenderAlert('MIC_DISCONNECTED', "Sender's microphone was disconnected");
+                        };
+                    });
+
+                    // Fix 6: Apply mic gain via GainNode (Web Audio API)
+                    // Cleanup old AudioContext if exists
+                    if (micAudioCtx) { try { micAudioCtx.close(); } catch (e) { } }
+
+                    micAudioCtx = new AudioContext({ sampleRate });
+                    micSourceNode = micAudioCtx.createMediaStreamSource(rawMicStream);
+                    micGainNode = micAudioCtx.createGain();
+                    const dest = micAudioCtx.createMediaStreamDestination();
+
+                    // FIX Bug E: check micMuted state — if user already muted before
+                    // stream starts, apply immediately to new GainNode (gain = 0)
+                    const dB = parseInt(document.getElementById('mic-gain-slider').value);
+                    micGainNode.gain.value = micMuted ? 0 : Math.pow(10, dB / 20);
+
+                    eqConnectChain('mic', micAudioCtx, micSourceNode, micGainNode);
+                    micGainNode.connect(dest);
+
+                    // Use processed stream (not rawMicStream)
+                    dest.stream.getAudioTracks().forEach(t => screenStream.addTrack(t));
+                } catch (e) {
+                    showToast('⚠️ Microphone access denied, continuing without mic', 'info');
+                }
+            } else {
+                // No mic — cleanup GainNode
+                micGainNode = null;
+                micSourceNode = null;
+                eqLive.mic = null;
+                if (micAudioCtx) { try { micAudioCtx.close(); } catch (e) { } micAudioCtx = null; }
+                if (rawMicTracks.length) { rawMicTracks.forEach(t => t.stop()); rawMicTracks = []; }
+            }
+
+            return screenStream;
+        }
+
+        // ====== Codec preference via SDP munging ======
+        function preferCodec(sdp, codecName) {
+            if (codecName === 'auto') return sdp;
+
+            const codecMap = { h264: 'H264', vp9: 'VP9', vp8: 'VP8' };
+            const target = codecMap[codecName];
+            if (!target) return sdp;
+
+            const lines = sdp.split('\r\n');
+            const mLineIdx = lines.findIndex(l => l.startsWith('m=video'));
+            if (mLineIdx === -1) return sdp;
+
+            // Cari payload IDs yang cocok dengan codec target
+            const rtpmapLines = lines.filter(l => l.includes('rtpmap') && l.toUpperCase().includes(target));
+            const preferredPTs = rtpmapLines.map(l => {
+                const m = l.match(/a=rtpmap:(\d+)/);
+                return m ? m[1] : null;
+            }).filter(Boolean);
+
+            if (preferredPTs.length === 0) return sdp;
+
+            // Parse m= line dan reorder payload types
+            const mLine = lines[mLineIdx];
+            const mParts = mLine.split(' ');
+            const existingPTs = mParts.slice(3);
+            const reordered = [
+                ...preferredPTs.filter(pt => existingPTs.includes(pt)),
+                ...existingPTs.filter(pt => !preferredPTs.includes(pt))
+            ];
+            lines[mLineIdx] = [...mParts.slice(0, 3), ...reordered].join(' ');
+
+            return lines.join('\r\n');
+        }
+
+        // ====== Inject bitrate ke SDP (b=TIAS) ======
+        function injectBitrateToSDP(sdp, videoBps, audioBps) {
+            const lines = sdp.split('\r\n');
+            const result = [];
+            let inVideo = false, inAudio = false;
+            let videoInjected = false, audioInjected = false;
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                if (line.startsWith('m=video')) { inVideo = true; inAudio = false; videoInjected = false; }
+                if (line.startsWith('m=audio')) { inAudio = true; inVideo = false; audioInjected = false; }
+
+                result.push(line);
+
+                // Inject setelah baris c= (connection line) di section video/audio
+                if (line.startsWith('c=')) {
+                    if (inVideo && !videoInjected && videoBps > 0) {
+                        const kbps = Math.round(videoBps / 1000);
+                        result.push(`b=TIAS:${videoBps}`);
+                        result.push(`b=AS:${kbps}`);
+                        videoInjected = true;
+                    }
+                    if (inAudio && !audioInjected && audioBps > 0) {
+                        result.push(`b=TIAS:${audioBps}`);
+                        result.push(`b=AS:${Math.round(audioBps / 1000)}`);
+                        audioInjected = true;
+                    }
+                }
+            }
+            return result.join('\r\n');
+        }
+
+        // ====== Patch PeerJS createOffer untuk inject SDP ======
+        function patchPeerForSDP(p, videoBps, audioBps, codecName) {
+            const pc = p.peerConnection;
+            if (!pc) return;
+
+            const origCreateOffer = pc.createOffer.bind(pc);
+            pc.createOffer = async function (options) {
+                const offer = await origCreateOffer(options);
+                let sdp = offer.sdp;
+                sdp = injectBitrateToSDP(sdp, videoBps, audioBps);
+                sdp = preferCodec(sdp, codecName);
+                return new RTCSessionDescription({ type: offer.type, sdp });
+            };
+
+            const origSetLocalDesc = pc.setLocalDescription.bind(pc);
+            pc.setLocalDescription = async function (desc) {
+                if (desc && desc.type === 'offer') {
+                    let sdp = desc.sdp;
+                    sdp = injectBitrateToSDP(sdp, videoBps, audioBps);
+                    sdp = preferCodec(sdp, codecName);
+                    return origSetLocalDesc(new RTCSessionDescription({ type: desc.type, sdp }));
+                }
+                return origSetLocalDesc(desc);
+            };
+        }
+
+        // ====== Set Bitrate via setParameters ======
+        // PENTING soal maxBitrate: itu CUMA plafon/ceiling, bukan target tetap. WebRTC punya
+        // congestion control bawaan (BWE) yang terus mantau kondisi real-time lewat RTCP feedback
+        // dari peer sebelah — kalau dia "curiga" ada kongesti (bisa krn bandwidth beneran abis, ATAU
+        // krn device penerima kelamaan decode misal TV jadul, dua-duanya keliatan sama dari sisi kita:
+        // ack telat / feedback jelek), dia bakal turunin resolusi/fps/bitrate ACTUAL di bawah plafon itu
+        // otomatis, walau kita udah set angka gede. Nah `degradationPreference` ini yang ngatur PRIORITAS
+        // pas si BWE itu kepaksa nurunin kualitas: mempertahankan resolusi (maintain-resolution), fps
+        // (maintain-framerate), atau dua-duanya sama rata (balanced). Tanpa di-set eksplisit kayak
+        // sebelumnya, browser pakai default sendiri yang gak kita kontrol — makanya kesannya kualitas
+        // "ke-compress sendiri" padahal semua slider udah dipentokin ke kanan.
+        //
+        // Guard di bawah ini (bitrateApplyState) buat cegah race condition: sender.getParameters()/
+        // setParameters() itu pakai transactionId internal — kalau 2 pemanggilan applyBitrateToCall
+        // nimpa satu sama lain (misal user gonta-ganti preset cepet2), setParameters yang kedua bisa
+        // gagal diam-diam karena transactionId udah basi duluan sama pemanggilan pertama. Guard ini
+        // mastiin cuma 1 yang jalan per peer connection, dan kalau ada permintaan baru numpuk pas lagi
+        // proses, dia otomatis jalan ULANG sekali lagi abis yang lama selesai (biar state terakhir yang
+        // kepakai, bukan yang ke-skip).
+        const bitrateApplyState = new WeakMap();
+
+        // Dipanggil tiap kali jumlah receiver aktif BERUBAH (ada yang join/leave) — semua call yang
+        // udah ada perlu di-reapply juga, bukan cuma yang baru connect, karena budget bitrate per-device
+        // (lihat applyBitrateToCall) bergantung ke JUMLAH TOTAL receiver yang aktif saat itu.
+        function reapplyBitrateToAllCalls() {
+            if (activeCalls.length === 0) {
+                const note = document.getElementById('bitrate-per-device-note');
+                if (note) note.classList.add('hidden');
+                return;
+            }
+            activeCalls.forEach(c => applyBitrateToCall(c));
+        }
+
+        function updateBitratePerDeviceNote(maxVideoBps, receiverCount) {
+            const note = document.getElementById('bitrate-per-device-note');
+            if (!note) return;
+            if (receiverCount <= 1) {
+                note.classList.add('hidden');
+                return;
+            }
+            const perDeviceMbps = (maxVideoBps / 1_000_000).toFixed(1);
+            note.textContent = '⚠️ Split across ' + receiverCount + ' connected devices — ≈' + perDeviceMbps + ' Mbps each (mesh P2P, not a media server)';
+            note.classList.remove('hidden');
+        }
+
+        async function applyBitrateToCall(call) {
+            const pc = call.peerConnection;
+            if (!pc) return;
+
+            let state = bitrateApplyState.get(pc);
+            if (!state) {
+                state = { inProgress: false, pending: false };
+                bitrateApplyState.set(pc, state);
+            }
+            if (state.inProgress) {
+                state.pending = true;
+                return;
+            }
+            state.inProgress = true;
+
+            try {
+                // Mesh P2P: tiap receiver dapet peer.call() + encoder sendiri-sendiri (gak di-share
+                // kayak SFU) — jadi kalau slider di-treat sebagai target PER-DEVICE, makin banyak yang
+                // connect makin numpuk beban upload+encode-nya (3 device @ 10Mbps = coba dorong 30Mbps
+                // sekaligus dari 1 laptop). Di sini slider di-treat sebagai BUDGET TOTAL, dibagi rata ke
+                // semua receiver yang lagi aktif. Kalau cuma 1 receiver, ini gak ngefek sama sekali
+                // (dibagi 1 = nilai aslinya).
+                const receiverCount = Math.max(1, activeCalls.length);
+                const videoFloor = 300_000; // di bawah ini encode-nya udah gak ada gunanya
+                const audioFloor = 24_000;
+                const maxVideoBps = Math.max(videoFloor, Math.floor(parseInt(document.getElementById('bitrate-slider').value) * 1_000_000 / receiverCount));
+                const maxAudioBps = Math.max(audioFloor, Math.floor(parseInt(document.getElementById('audio-bitrate-slider').value) * 1000 / receiverCount));
+                const audioMode = document.getElementById('audio-select').value;
+                const priorityMap = { quality: 'maintain-resolution', balanced: 'balanced', smoothness: 'maintain-framerate' };
+                const degradationPreference = priorityMap[document.getElementById('priority-select')?.value] || 'balanced';
+                updateBitratePerDeviceNote(maxVideoBps, receiverCount);
+
+                const senders = pc.getSenders();
+                for (const sender of senders) {
+                    if (!sender.track) continue;
+                    const params = sender.getParameters();
+                    if (!params.encodings || params.encodings.length === 0) {
+                        params.encodings = [{}];
+                    }
+                    if (sender.track.kind === 'video') {
+                        params.encodings[0].maxBitrate = maxVideoBps;
+                        params.encodings[0].scaleResolutionDownBy = 1.0;
+                        params.encodings[0].maxFramerate = parseInt(document.getElementById('fps-select').value);
+                        // degradationPreference itu field top-level di params, BUKAN di dalam encodings[0]
+                        params.degradationPreference = degradationPreference;
+                    }
+                    if (sender.track.kind === 'audio' && audioMode !== 'none') {
+                        params.encodings[0].maxBitrate = maxAudioBps;
+                    }
+                    try {
+                        await sender.setParameters(params);
+                    } catch (e) {
+                        // Dulu di-ignore diam-diam — sekarang di-log biar ketauan kalau ada yang gagal
+                        // apply (misal gara-gara transactionId basi atau browser nolak parameter-nya).
+                        console.error('[applyBitrateToCall] setParameters failed for', sender.track.kind, e);
+                    }
+                }
+            } finally {
+                state.inProgress = false;
+                if (state.pending) {
+                    state.pending = false;
+                    applyBitrateToCall(call); // ada perubahan numpuk pas lagi proses — jalanin ulang sekali lagi
+                }
+            }
+        }
+
+        // ====== Video Quality Presets (Max / Default / Low / Custom) ======
+        // Pola persis niru preset EQ (server-side JSON, bukan localStorage, biar bisa diakses dari
+        // device manapun) — bedanya di sini ada 3 preset bawaan (gak bisa dihapus/ditimpa) + slot
+        // "__custom__" yang OTOMATIS kepilih & ke-save sendiri begitu ada slider/dropdown yang diubah
+        // manual saat lagi mode preset bawaan. User juga tetep bisa "Save As..." buat nyimpen preset
+        // custom lain dengan nama sendiri (misal "TV Ruang Tamu"), sama kayak cara kerja preset EQ.
+        const VIDEO_PRESETS_API = '/api/video-presets';
+        const BUILTIN_VIDEO_PRESETS = {
+            __max__: { label: '🚀 Max Quality', resolution: 2160, fps: 60, bitrate: 30, codec: 'h264', priority: 'quality' },
+            __default__: { label: '⚖️ Default (Balance)', resolution: 1080, fps: 60, bitrate: 10, codec: 'h264', priority: 'balanced' },
+            __low__: { label: '⚡ Low Latency', resolution: 720, fps: 30, bitrate: 3, codec: 'h264', priority: 'smoothness' },
+        };
+        const RESERVED_VIDEO_PRESET_NAMES = ['__max__', '__default__', '__low__', '__custom__'];
+
+        let currentVideoPreset = '__default__';
+        let applyingVideoPresetProgrammatically = false;
+        let videoCustomSaveTimer = null;
+
+        function videoPresetSettingsFromUI() {
+            return {
+                resolution: parseInt(document.getElementById('res-select').value),
+                fps: parseInt(document.getElementById('fps-select').value),
+                bitrate: parseInt(document.getElementById('bitrate-slider').value),
+                codec: document.getElementById('codec-select').value,
+                priority: document.getElementById('priority-select').value,
+            };
+        }
+
+        function applyVideoPresetSettings(settings) {
+            applyingVideoPresetProgrammatically = true;
+            document.getElementById('res-select').value = settings.resolution;
+            document.getElementById('fps-select').value = settings.fps;
+            document.getElementById('codec-select').value = settings.codec;
+            document.getElementById('priority-select').value = settings.priority || 'balanced';
+            document.getElementById('bitrate-slider').value = settings.bitrate;
+            document.getElementById('bitrate-label').textContent = settings.bitrate + ' Mbps';
+            applyingVideoPresetProgrammatically = false;
+
+            // Bitrate/fps/priority langsung diterapkan ke call yang lagi aktif (live, gak perlu restart).
+            // Resolusi & codec sengaja TIDAK direnegosiasi live — itu butuh capture/SDP baru, jadi baru
+            // beneran kepakai pas Start Screen/Webcam berikutnya. Makanya kalau lagi live, dikasih toast.
+            if (activeCalls.length > 0) {
+                activeCalls.forEach(call => applyBitrateToCall(call));
+                showToast('🎬 Bitrate/FPS/Priority applied live — resolution & codec apply on next stream', 'info');
+            }
+        }
+
+        async function videoLoadAllPresets() {
+            try {
+                const res = await fetch(VIDEO_PRESETS_API);
+                if (!res.ok) throw new Error('Server returned ' + res.status);
+                return await res.json();
+            } catch (e) {
+                showToast('⚠️ Could not reach server for video presets', 'error');
+                return {};
+            }
+        }
+
+        async function videoSavePresetToServer(name, settings) {
+            try {
+                const res = await fetch(VIDEO_PRESETS_API, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, settings }),
+                });
+                if (!res.ok) throw new Error('Server returned ' + res.status);
+                return true;
+            } catch (e) {
+                showToast('⚠️ Failed to save video preset to server', 'error');
+                return false;
+            }
+        }
+
+        async function videoDeletePresetFromServer(name) {
+            try {
+                const res = await fetch(VIDEO_PRESETS_API, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name }),
+                });
+                if (!res.ok) throw new Error('Server returned ' + res.status);
+                return true;
+            } catch (e) {
+                showToast('⚠️ Failed to delete video preset on server', 'error');
+                return false;
+            }
+        }
+
+        async function populateVideoPresetSelect() {
+            const sel = document.getElementById('video-preset-select');
+            if (!sel) return;
+            const all = await videoLoadAllPresets();
+            let html = Object.entries(BUILTIN_VIDEO_PRESETS)
+                .map(([key, p]) => `<option value="${key}">${p.label}</option>`).join('');
+            if (all.__custom__) html += '<option value="__custom__">✏️ Custom</option>';
+            const savedNames = Object.keys(all).filter(n => n !== '__custom__');
+            html += savedNames.map(n => `<option value="${n.replace(/"/g, '&quot;')}">${n}</option>`).join('');
+            sel.innerHTML = html;
+            sel.value = currentVideoPreset;
+        }
+
+        async function onVideoPresetSelect() {
+            const sel = document.getElementById('video-preset-select');
+            const name = sel.value;
+            currentVideoPreset = name;
+
+            if (BUILTIN_VIDEO_PRESETS[name]) {
+                applyVideoPresetSettings(BUILTIN_VIDEO_PRESETS[name]);
+                showToast('🎬 Preset "' + BUILTIN_VIDEO_PRESETS[name].label + '" applied', 'success');
+                return;
+            }
+            const all = await videoLoadAllPresets();
+            const settings = all[name];
+            if (settings) {
+                applyVideoPresetSettings(settings);
+                showToast('🎬 Preset "' + name + '" applied', 'success');
+            }
+        }
+
+        // Dipanggil tiap kali res/fps/codec/priority/bitrate diubah manual. Kalau perubahannya
+        // dari applyVideoPresetSettings() sendiri (lagi apply preset), diabaikan — biar milih preset
+        // gak langsung ke-flag jadi "Custom" cuma gara-gara preset itu sendiri yang ngubah value-nya.
+        function markVideoPresetAsCustom() {
+            if (applyingVideoPresetProgrammatically) return;
+            currentVideoPreset = '__custom__';
+
+            const sel = document.getElementById('video-preset-select');
+            if (sel) {
+                if (!sel.querySelector('option[value="__custom__"]')) {
+                    const opt = document.createElement('option');
+                    opt.value = '__custom__';
+                    opt.textContent = '✏️ Custom';
+                    sel.insertBefore(opt, sel.children[3] || null);
+                }
+                sel.value = '__custom__';
+            }
+
+            if (activeCalls.length > 0) activeCalls.forEach(call => applyBitrateToCall(call));
+
+            // Auto-save ke server didebounce 600ms biar gak nembak API tiap 1px geseran slider
+            clearTimeout(videoCustomSaveTimer);
+            videoCustomSaveTimer = setTimeout(() => {
+                videoSavePresetToServer('__custom__', videoPresetSettingsFromUI());
+            }, 600);
+        }
+
+        async function saveVideoPresetAs() {
+            const name = prompt('Preset name:');
+            if (!name) return;
+            if (RESERVED_VIDEO_PRESET_NAMES.includes(name)) {
+                showToast('⚠️ That name is reserved for a built-in preset, pick another one', 'error');
+                return;
+            }
+            const settings = videoPresetSettingsFromUI();
+            const ok = await videoSavePresetToServer(name, settings);
+            if (!ok) return;
+            currentVideoPreset = name;
+            await populateVideoPresetSelect();
+            document.getElementById('video-preset-select').value = name;
+            showToast('💾 Preset "' + name + '" saved to server — available on any device', 'success');
+        }
+
+        async function deleteVideoPreset() {
+            const sel = document.getElementById('video-preset-select');
+            const name = sel.value;
+            if (RESERVED_VIDEO_PRESET_NAMES.includes(name)) {
+                showToast('⚠️ Built-in presets cannot be deleted', 'info');
+                return;
+            }
+            const ok = await videoDeletePresetFromServer(name);
+            if (!ok) return;
+            currentVideoPreset = '__default__';
+            await populateVideoPresetSelect();
+            applyVideoPresetSettings(BUILTIN_VIDEO_PRESETS.__default__);
+            showToast('🗑️ Preset "' + name + '" deleted', 'info');
+        }
+
+        // ---------- INIT video preset ----------
+        document.getElementById('video-preset-select').addEventListener('change', onVideoPresetSelect);
+        ['res-select', 'fps-select', 'codec-select', 'priority-select'].forEach(id => {
+            document.getElementById(id).addEventListener('change', markVideoPresetAsCustom);
+        });
+        document.getElementById('bitrate-slider').addEventListener('input', markVideoPresetAsCustom);
+        populateVideoPresetSelect();
+
+        // ====== Connection Mode (PIN / Without PIN) ======
+        let connectionMode = 'pin'; // 'pin' | 'nopin'
+
+        function selectConnectionMode(mode) {
+            connectionMode = mode;
+            const pinBtn = document.getElementById('mode-pin-btn');
+            const nopinBtn = document.getElementById('mode-nopin-btn');
+            const codeNum = document.getElementById('my-peer-code');
+            const codeHint = document.getElementById('code-hint-text');
+
+            if (mode === 'pin') {
+                // PIN active style
+                pinBtn.style.border = '1px solid rgba(124,106,255,0.5)';
+                pinBtn.style.background = 'rgba(124,106,255,0.15)';
+                pinBtn.style.color = 'var(--accent)';
+                // Without PIN inactive style
+                nopinBtn.style.border = '1px solid var(--border)';
+                nopinBtn.style.background = 'var(--surface2)';
+                nopinBtn.style.color = 'var(--muted)';
+                // Update code display
+                codeNum.style.color = 'var(--yellow)';
+                codeHint.textContent = 'Enter this code on the receiver device';
+                // Destroy fixed peer — not needed in PIN mode
+                if (peerFixed && !peerFixed.destroyed) { peerFixed.destroy(); peerFixed = null; }
+                // Receiver yang connect lewat Without PIN otomatis putus begitu peerFixed di-destroy
+                // (mereka bakal coba reconnect sendiri di sisi receiver, tapi gak akan berhasil selama
+                // mode PIN aktif — fixed ID-nya udah gak ada yang dengerin). Bersihin juga dari
+                // waiting/known list di sini, biar UI sender gak nyisain entry yang sebenernya udah
+                // gak reachable lagi.
+                const nopinIds = [...receiverMeta.entries()].filter(([, m]) => m.mode === 'nopin').map(([id]) => id);
+                if (nopinIds.length > 0) {
+                    waitingReceivers = waitingReceivers.filter(id => !nopinIds.includes(id));
+                    knownReceivers = knownReceivers.filter(id => !nopinIds.includes(id));
+                    activeCalls = activeCalls.filter(c => !nopinIds.includes(c.peer));
+                    nopinIds.forEach(id => receiverMeta.delete(id));
+                    updateConnectedCount();
+                    renderReceiverList();
+                }
+                showToast('🔒 PIN mode — share the code with the receiver', 'info');
+            } else {
+                // Without PIN active style
+                nopinBtn.style.border = '1px solid rgba(78,240,184,0.45)';
+                nopinBtn.style.background = 'rgba(78,240,184,0.12)';
+                nopinBtn.style.color = 'var(--accent2)';
+                // PIN inactive style
+                pinBtn.style.border = '1px solid var(--border)';
+                pinBtn.style.background = 'var(--surface2)';
+                pinBtn.style.color = 'var(--muted)';
+                // Update code display
+                codeNum.style.color = 'var(--accent2)';
+                codeHint.textContent = 'Devices on the same network connect automatically · PIN code above still works too';
+                // Re-init fixed peer if not running
+                if (!peerFixed || peerFixed.destroyed) initFixedSenderPeer(getFixedSenderId());
+                showToast('⚡ Without PIN — any device on this network can connect', 'success');
+            }
+        }
+
+        // ====== Fixed ID helper — derived dari hostname ======
+        function getFixedSenderId() {
+            let h = 0;
+            const s = location.hostname;
+            for (let i = 0; i < s.length; i++) { h = (Math.imul(31, h) + s.charCodeAt(i)) | 0; }
+            return 'wellshare-' + Math.abs(h).toString(36) + '-sender';
+        }
+
+        // ====== Init Peer as Host ======
+        async function initSenderPeer() {
+            if (peer) { peer.destroy(); peer = null; }
+            if (peerFixed) { peerFixed.destroy(); peerFixed = null; }
+            const id = Math.floor(1000 + Math.random() * 9000).toString();
+            document.getElementById('my-peer-code').textContent = '····';
+            // Fixed peer hanya diinit kalau mode Without PIN aktif
+            if (connectionMode === 'nopin') {
+                initFixedSenderPeer(getFixedSenderId());
+            }
+
+            const p = new Peer(id, {
+                host: location.hostname,
+                port: location.port || (location.protocol === 'https:' ? 443 : 80),
+                path: '/peerjs',
+                secure: location.protocol === 'https:',
+                config: {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' }
+                    ]
+                },
+                debug: 0
+            });
+            peer = p;
+
+            p.on('open', (openId) => {
+                document.getElementById('my-peer-code').textContent = openId;
+            });
+
+            // TV sends DataConnection with its peer ID (or {id, name, mode} object)
+            p.on('connection', (conn) => {
+                activeDataConns.push(conn);
+                conn.on('close', () => { activeDataConns = activeDataConns.filter(c => c !== conn); });
+                conn.on('data', (payload) => {
+                    // Support both legacy string and new object format
+                    let tvPeerId, devName, devMode;
+                    if (typeof payload === 'string') {
+                        tvPeerId = payload; devName = null; devMode = 'pin';
+                    } else if (payload && typeof payload === 'object' && payload.id) {
+                        tvPeerId = payload.id; devName = payload.name || null; devMode = payload.mode || 'pin';
+                    } else { return; }
+
+                    if (!knownReceivers.includes(tvPeerId)) knownReceivers.push(tvPeerId);
+                    // Store/update meta
+                    const existing = receiverMeta.get(tvPeerId) || {};
+                    receiverMeta.set(tvPeerId, { name: devName || existing.name || null, mode: devMode, ip: existing.ip || null });
+
+                    renderReceiverList();
+                    if (currentStream) {
+                        try { if (conn.open) conn.send('stream-active'); } catch (e) { }
+                        callReceiver(tvPeerId);
+                    } else {
+                        if (!waitingReceivers.includes(tvPeerId)) {
+                            waitingReceivers.push(tvPeerId);
+                            showToast('📺 Device is waiting (' + waitingReceivers.length + ' queued)', 'info');
+                            renderReceiverList();
+                        }
+                    }
+                });
+            });
+
+            p.on('disconnected', () => {
+                setStatus('connecting', 'Connection lost — reconnecting...', 'RECONNECT');
+                showToast('🔌 Network lost — reconnecting...', 'info');
+                if (!p.destroyed) {
+                    setTimeout(() => {
+                        try {
+                            p.reconnect();
+                            setStatus(isLive ? 'live' : '', isLive ? 'Reconnected — streaming active' : 'Reconnected', isLive ? 'LIVE' : 'IDLE');
+                            showToast('✅ Reconnected to server', 'success');
+                        } catch (e) { }
+                    }, 1500);
+                }
+            });
+
+            p.on('error', (err) => {
+                if (err.type === 'unavailable-id') {
+                    setTimeout(() => initSenderPeer(), 500);
+                } else if (err.type === 'network' || err.type === 'server-error') {
+                    setStatus('connecting', 'Connection error — retrying...', 'RECONNECT');
+                    showToast('⚠️ Network error — retrying...', 'error');
+                    setTimeout(() => initSenderPeer(), 3000);
+                } else {
+                    showToast('❌ Peer error: ' + err.type, 'error');
+                }
+            });
+        }
+
+        // Fix Bug 3: Re-announce — kirim 'request-id' ke semua DataConn aktif
+        // supaya receiver yang masih connected bisa re-register setelah sender start ulang
+        // ====== Fixed Peer (Without PIN) ======
+        function initFixedSenderPeer(fixedId) {
+            const fp = new Peer(fixedId, {
+                host: location.hostname,
+                port: location.port || (location.protocol === 'https:' ? 443 : 80),
+                path: '/peerjs',
+                secure: location.protocol === 'https:',
+                config: {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' }
+                    ]
+                },
+                debug: 0
+            });
+            peerFixed = fp;
+
+            fp.on('open', () => {
+                // Tampilkan badge Without PIN di UI
+                const badge = document.getElementById('without-pin-badge');
+                if (badge) badge.style.display = 'inline-flex';
+            });
+
+            // Reuse handler yang sama dengan peer utama
+            fp.on('connection', (conn) => {
+                activeDataConns.push(conn);
+                conn.on('close', () => { activeDataConns = activeDataConns.filter(c => c !== conn); });
+                conn.on('data', (payload) => {
+                    // Support both legacy string and new object format
+                    let tvPeerId, devName, devMode;
+                    if (typeof payload === 'string') {
+                        tvPeerId = payload; devName = null; devMode = 'nopin';
+                    } else if (payload && typeof payload === 'object' && payload.id) {
+                        tvPeerId = payload.id; devName = payload.name || null; devMode = payload.mode || 'nopin';
+                    } else { return; }
+
+                    if (!knownReceivers.includes(tvPeerId)) knownReceivers.push(tvPeerId);
+                    // Store/update meta — always mark as nopin since this is the fixed peer handler
+                    const existing = receiverMeta.get(tvPeerId) || {};
+                    receiverMeta.set(tvPeerId, { name: devName || existing.name || null, mode: 'nopin', ip: existing.ip || null });
+
+                    renderReceiverList();
+                    if (currentStream) {
+                        try { if (conn.open) conn.send('stream-active'); } catch (e) { }
+                        // FIX: use callReceiver() instead of raw .call() so ICE tracking,
+                        // activeCalls push, renderReceiverList and toast all work correctly
+                        callReceiver(tvPeerId);
+                    } else {
+                        if (!waitingReceivers.includes(tvPeerId)) {
+                            waitingReceivers.push(tvPeerId);
+                            showToast('📺 Device is waiting (' + waitingReceivers.length + ' queued)', 'info');
+                            renderReceiverList();
+                        }
+                    }
+                });
+            });
+
+            fp.on('disconnected', () => {
+                if (!fp.destroyed && withoutPinEnabled) {
+                    setTimeout(() => {
+                        try { fp.reconnect(); } catch (e) { }
+                    }, 1500);
+                }
+            });
+
+            fp.on('error', (err) => {
+                // ID sudah dipakai orang lain (sender lain di domain yang sama) — tidak masalah, abaikan
+                if (err.type === 'unavailable-id') {
+                    console.warn('[FixedPeer] ID taken:', fixedId);
+                }
+            });
+        }
+
+        function reAnnounceToDataConns() {
+            activeDataConns.forEach(conn => {
+                try { if (conn.open) conn.send('request-id'); } catch (e) { }
+            });
+        }
+
+        // ====== Extract Remote IP (via getStats, bukan icecandidate) ======
+        // Kenapa diganti: pc.addEventListener('icecandidate', ...) itu isinya kandidat LOKAL —
+        // alamat network milik SENDER SENDIRI yang dikirim ke lawan bicara buat dicoba, BUKAN
+        // alamat milik receiver. Karena sender-nya sama buat semua panggilan, itu makanya semua
+        // receiver keliatan punya IP yang sama persis — sebenarnya yang kebaca itu IP sender
+        // sendiri, bukan IP masing-masing receiver.
+        // Cara yang bener: getStats() -> transport report -> selectedCandidatePairId -> di situ ada
+        // remoteCandidateId -> baru dari situ dapet address milik lawan bicara yang sebenarnya.
+        async function extractRemoteIP(pc, tvPeerId) {
+            try {
+                const stats = await pc.getStats();
+                let pairId = null;
+                stats.forEach(report => {
+                    if (report.type === 'transport' && report.selectedCandidatePairId) {
+                        pairId = report.selectedCandidatePairId;
+                    }
+                });
+                if (!pairId) {
+                    // Fallback buat browser/versi lama yang gak expose transport.selectedCandidatePairId
+                    stats.forEach(report => {
+                        if (report.type === 'candidate-pair' && (report.selected || report.state === 'succeeded') && !pairId) {
+                            pairId = report.id;
+                        }
+                    });
+                }
+                if (!pairId) return;
+                const pair = stats.get(pairId);
+                if (!pair || !pair.remoteCandidateId) return;
+                const remoteCand = stats.get(pair.remoteCandidateId);
+                if (!remoteCand) return;
+                const ip = remoteCand.address || remoteCand.ip;
+                if (!ip) return;
+                const meta = receiverMeta.get(tvPeerId) || {};
+                receiverMeta.set(tvPeerId, { ...meta, ip });
+                renderReceiverList();
+            } catch (e) {
+                console.error('[extractRemoteIP] failed:', e);
+            }
+        }
+
+        function callReceiver(tvPeerId) {
+            if (!currentStream || !peer) return;
+
+            // Don't call if already have an active call to this peer
+            if (activeCalls.find(c => c.peer === tvPeerId && c.open !== false)) {
+                return;
+            }
+
+            const call = peer.call(tvPeerId, currentStream);
+            // Fix Bug 4: JANGAN push ke activeCalls dulu — push setelah ICE connected
+
+            const pc = call.peerConnection;
+
+            // Timeout: if ICE fails within 8s, remove this call as dead
+            let callEstablished = false;
+            const callTimeout = setTimeout(() => {
+                if (!callEstablished) {
+                    activeCalls = activeCalls.filter(c => c !== call);
+                    // Timeout = receiver benar-benar tidak reachable, boleh hapus dari known
+                    knownReceivers = knownReceivers.filter(id => id !== tvPeerId);
+                    waitingReceivers = waitingReceivers.filter(id => id !== tvPeerId);
+                    updateConnectedCount();
+                    renderReceiverList();
+                    try { call.close(); } catch (e) { }
+                }
+            }, 8000);
+
+            pc.addEventListener('iceconnectionstatechange', async () => {
+                if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+                    callEstablished = true;
+                    clearTimeout(callTimeout);
+                    // Fix Bug 4: Push ke activeCalls hanya setelah ICE benar-benar connected
+                    if (!activeCalls.includes(call)) {
+                        activeCalls.push(call);
+                        updateConnectedCount();
+                        renderReceiverList();
+                        showToast('📺 Device connected! Total: ' + activeCalls.length, 'success');
+                        setStatus('live', 'Streaming to ' + activeCalls.length + ' device(s)', 'LIVE');
+                        // Receiver baru join — budget bitrate kebagi ulang, semua call existing
+                        // (bukan cuma yang baru) perlu di-reapply
+                        reapplyBitrateToAllCalls();
+                    }
+                    await applyBitrateToCall(call);
+                    extractRemoteIP(pc, tvPeerId);
+                }
+                if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+                    clearTimeout(callTimeout);
+                    activeCalls = activeCalls.filter(c => c !== call);
+                    // Fix Bug 1: JANGAN hapus dari knownReceivers — ini hanya network issue
+                    // receiver masih waiting dengan code yang sama, bisa di-call ulang saat start lagi
+                    updateConnectedCount();
+                    renderReceiverList();
+                    reapplyBitrateToAllCalls();
+                }
+            });
+            setTimeout(() => applyBitrateToCall(call), 2000);
+
+            call.on('stream', () => { callEstablished = true; clearTimeout(callTimeout); });
+            call.on('error', () => {
+                clearTimeout(callTimeout);
+                activeCalls = activeCalls.filter(c => c !== call);
+                // Fix Bug 1: JANGAN hapus dari knownReceivers saat error
+                updateConnectedCount();
+                renderReceiverList();
+                reapplyBitrateToAllCalls();
+            });
+            call.on('close', () => {
+                clearTimeout(callTimeout);
+                activeCalls = activeCalls.filter(c => c !== call);
+                // Fix Bug 1: JANGAN hapus dari knownReceivers saat close
+                // knownReceivers hanya dihapus saat kick (intentional)
+                updateConnectedCount();
+                renderReceiverList();
+                showToast('📴 1 device disconnected', 'info');
+                if (activeCalls.length === 0 && isLive) {
+                    setStatus('live', 'Streaming active — waiting for receiver', 'LIVE');
+                } else {
+                    reapplyBitrateToAllCalls();
+                }
+            });
+        }
+
+        // ── Kick receiver ──────────────────────────────────────────────
+        function kickReceiver(tvPeerId) {
+            // Ambil referensi call dan dataconn sebelum state dibersihkan
+            const call = activeCalls.find(c => c.peer === tvPeerId);
+            const dc = activeDataConns.find(c => c.peer === tvPeerId);
+
+            // Step 1: kirim sinyal 'kicked' DULU via DataConn
+            if (dc && dc.open) { try { dc.send('kicked'); } catch (e) { } }
+
+            // Step 2: bersihkan state sender
+            activeCalls = activeCalls.filter(c => c.peer !== tvPeerId);
+            knownReceivers = knownReceivers.filter(id => id !== tvPeerId);
+            waitingReceivers = waitingReceivers.filter(id => id !== tvPeerId);
+            receiverMeta.delete(tvPeerId);
+            updateConnectedCount();
+            renderReceiverList();
+            showToast('🚫 Device disconnected', 'info');
+            reapplyBitrateToAllCalls();
+
+            // Step 3: tutup call setelah 600ms delay — beri waktu sinyal 'kicked' sampai
+            // sehingga receiver sudah proses sinyal dan balik ke Connect screen
+            // sebelum call.on('close') di receiver sempat trigger Waiting screen
+            if (call) {
+                setTimeout(() => { try { call.close(); } catch (e) { } }, 600);
+            }
+        }
+
+        function renderReceiverList() {
+            const list = document.getElementById('receiver-list');
+            if (!list) return;
+            const wrap = document.getElementById('receiver-list-wrap');
+
+            // Gabungkan: live (activeCalls) + waiting (waitingReceivers)
+            const liveIds = activeCalls.map(c => c.peer);
+            const waitingIds = waitingReceivers.filter(id => !liveIds.includes(id));
+            const total = activeCalls.length + waitingIds.length;
+
+            if (total === 0) {
+                wrap.style.display = 'none';
+                return;
+            }
+            wrap.style.display = 'block';
+
+            function modeBadge(mode) {
+                if (mode === 'nopin') {
+                    return `<span style="font-size:9px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;padding:2px 7px;border-radius:5px;background:rgba(78,240,184,0.1);color:var(--accent2);border:1px solid rgba(78,240,184,0.25)">No PIN</span>`;
+                }
+                return `<span style="font-size:9px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;padding:2px 7px;border-radius:5px;background:rgba(124,106,255,0.1);color:var(--accent);border:1px solid rgba(124,106,255,0.25)">PIN</span>`;
+            }
+
+            function deviceLabel(peerId, idx) {
+                const meta = receiverMeta.get(peerId);
+                const name = meta && meta.name ? meta.name : ('Device ' + idx);
+                const ip = meta && meta.ip ? `<span style="font-size:10px;color:var(--text);font-family:'Space Mono',monospace;margin-left:4px">${meta.ip}</span>` : '';
+                const badge = modeBadge(meta ? meta.mode : 'pin');
+                return `<span style="font-size:13px;font-weight:500">${name}</span>${ip}${badge}`;
+            }
+
+            // Live devices
+            const liveHTML = activeCalls.map((call, i) => {
+                const peerId = call.peer || ('device-' + (i + 1));
+                return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;margin-bottom:6px">
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0">
+                        <span style="width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green);display:inline-block;flex-shrink:0"></span>
+                        ${deviceLabel(peerId, i + 1)}
+                    </div>
+                    <button onclick="kickReceiver('${peerId}')" style="flex-shrink:0;background:rgba(255,77,106,0.1);border:1px solid rgba(255,77,106,0.3);color:var(--danger);border-radius:8px;padding:4px 10px;font-size:11px;cursor:pointer;transition:all 0.2s;margin-left:8px" onmouseover="this.style.background='rgba(255,77,106,0.25)'" onmouseout="this.style.background='rgba(255,77,106,0.1)'">Kick</button>
+                </div>`;
+            });
+
+            // Waiting devices — badge kuning, tanpa tombol Kick
+            const waitHTML = waitingIds.map((id, i) => {
+                const num = activeCalls.length + i + 1;
+                return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--surface2);border:1px solid rgba(255,209,102,0.15);border-radius:10px;margin-bottom:6px;opacity:0.75">
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0">
+                        <span style="width:7px;height:7px;border-radius:50%;background:var(--yellow);animation:blink 1.2s infinite;display:inline-block;flex-shrink:0"></span>
+                        ${deviceLabel(id, num)}
+                    </div>
+                    <span style="flex-shrink:0;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--yellow);padding:3px 8px;border-radius:6px;background:rgba(255,209,102,0.08);border:1px solid rgba(255,209,102,0.2);margin-left:8px">Waiting</span>
+                </div>`;
+            });
+
+            list.innerHTML = [...liveHTML, ...waitHTML].join('');
+        }
+
+        function updateConnectedCount() {
+            const n = activeCalls.length;
+            if (isLive) {
+                setStatus('live', n > 0 ? 'Streaming to ' + n + ' receiver' : 'Streaming active — waiting for receiver', 'LIVE');
+            }
+        }
+
+        // ====== Start Streaming ======
+        async function startStream() {
+            const label = sourceMode === 'webcam' ? 'Accessing webcam...' : 'Capturing screen...';
+            setStatus('connecting', label, 'INIT');
+
+            try {
+                currentStream = await getStream();
+            } catch (err) {
+                setStatus('', 'Cancelled or failed', 'IDLE');
+                showToast('❌ Capture failed: ' + err.message, 'error');
+                return;
+            }
+
+            document.getElementById('preview-video').srcObject = currentStream;
+
+            // Pasang onended di SEMUA video track currentStream
+            // — webcam mode: track dari getUserMedia (kamera kedisconnect/dicabut) → notify only, GAK auto-stop
+            // — screen mode: track dari getDisplayMedia (user klik Stop di browser bar) → ini aksi sengaja, tetap auto-stop
+            currentStream.getVideoTracks().forEach(track => {
+                // Content hint: kasih tau encoder jenis kontennya biar trade-off-nya pas —
+                // screen share isinya teks/garis tajam jadi diprioritasin "detail" (ketajaman),
+                // webcam isinya gerakan wajah terus jadi diprioritasin "motion" (kelancaran gerak).
+                track.contentHint = sourceMode === 'webcam' ? 'motion' : 'detail';
+                track.onended = () => {
+                    if (sourceMode === 'webcam') {
+                        showToast('📷 Webcam disconnected', 'error');
+                        sendSenderAlert('CAMERA_DISCONNECTED', "Sender's camera was disconnected");
+                    } else {
+                        showToast('🖥️ Screen share stopped by OS', 'info');
+                        handleStop();
+                    }
+                };
+            });
+
+            const liveLabel = sourceMode === 'webcam' ? 'Webcam active — waiting for receiver' : 'Streaming active — waiting for receiver';
+            setStatus('live', liveLabel, 'LIVE');
+            setLive(true);
+            startStats();
+            showToast('✅ Stream active! Receiver can connect now', 'success');
+
+            // Fix Bug 3: Request re-announce dari semua DataConn yang masih open
+            // untuk receiver yang sudah connected tapi knownReceivers belum ter-update
+            reAnnounceToDataConns();
+
+            // FIX Bug F: beri jeda 200ms sebelum memanggil receiver
+            // supaya close event dari call lama sudah selesai diproses (async)
+            // dan activeCalls sudah bersih — mencegah receiver di-call dua kali
+            // yang bisa menyebabkan dua stream masuk ke TV (glitch/flicker)
+            setTimeout(() => {
+                const toCall = [...new Set([...waitingReceivers, ...knownReceivers])];
+                waitingReceivers = [];
+                toCall.forEach(id => callReceiver(id));
+            }, 200);
+        }
+
+        // ====== Kirim alert non-fatal ke semua receiver (misal mic/device disconnect) ======
+        // Gak ngubah state streaming sama sekali — cuma notifikasi info di layar receiver + toast lokal
+        function sendSenderAlert(code, text) {
+            activeDataConns.forEach(conn => {
+                try { if (conn.open) conn.send({ type: 'sender-alert', code: code, text: text }); } catch (e) { }
+            });
+        }
+
+        // ============================================================
+        // ====== PARAMETRIC EQUALIZER (Mic & System — terpisah) ======
+        // ============================================================
+        // Arsitektur: tiap band = 1 BiquadFilterNode. Chain-nya disisipkan
+        // di antara source node dan GainNode (source -> band1 -> band2 -> ... -> GainNode).
+        // Karena ini kejadian SEBELUM track dikirim ke WebRTC (sama logikanya kayak
+        // GainNode), gak perlu replaceTrack/renegotiation apapun.
+        //
+        // Data band (freq/gain/q/type) disimpan plain object di eqData — ini yang
+        // jadi "source of truth" & yang disave ke preset. Node BiquadFilter yang
+        // beneran connect ke audio chain ('live') dipisah di eqLive, supaya data
+        // band tetep idup walau sesi stream berhenti/restart (AudioContext baru
+        // dibikin tiap sesi, node filter lama jadi gak valid lagi buat context baru).
+
+        let eqData = { mic: { bands: [] }, system: { bands: [] } };
+        let eqLive = { mic: null, system: null }; // { ctx, sourceNode, targetNode, nodeMap:{bandId:BiquadFilterNode} }
+        let eqDesignNodes = { mic: {}, system: {} }; // bandId -> BiquadFilterNode khusus hitung curve (gak connect ke speaker apapun)
+        let eqDesignCtx = null;
+        let eqActiveTab = 'mic';
+        let eqSelectedBandId = null;
+        let eqDragBandId = null;
+        let eqIdCounter = 0;
+
+        const EQ_MIN_F = 20, EQ_MAX_F = 20000, EQ_MAX_DB = 24;
+        const EQ_LOG_MIN = Math.log10(EQ_MIN_F), EQ_LOG_MAX = Math.log10(EQ_MAX_F);
+        const EQ_FILTER_TYPES = ['peaking', 'lowshelf', 'highshelf', 'lowpass', 'highpass', 'notch', 'bandpass', 'allpass'];
+
+        function genEQId() { return 'b' + (++eqIdCounter) + '_' + Date.now().toString(36); }
+
+        function eqBandColor(idx) {
+            const colors = ['#7c6aff', '#4ef0b8', '#ffd166', '#ff4d6a', '#5dd5ff', '#ff8fab', '#b794f6', '#6ee7b7'];
+            return colors[idx % colors.length];
+        }
+
+        // ---------- LIVE CHAIN (audio beneran) ----------
+        // Dipanggil pas getStream() bikin source baru — sambungin source -> [band filters] -> targetNode (GainNode)
+        function eqConnectChain(which, ctx, sourceNode, targetNode) {
+            const bands = eqData[which].bands;
+            const nodeMap = {};
+            let prev = sourceNode;
+            bands.forEach(b => {
+                const f = ctx.createBiquadFilter();
+                f.type = b.type;
+                f.frequency.value = b.freq;
+                f.gain.value = b.gain;
+                f.Q.value = b.q;
+                prev.connect(f);
+                prev = f;
+                nodeMap[b.id] = f;
+            });
+            prev.connect(targetNode);
+            eqLive[which] = { ctx, sourceNode, targetNode, nodeMap };
+        }
+
+        // Dipanggil pas hot-swap device (source berubah, ctx & target TETAP sama)
+        function eqRewireLiveSource(which, newSourceNode) {
+            const st = eqLive[which];
+            if (!st) return; // EQ chain ini gak lagi live, gapapa — biarin caller pakai fallback-nya sendiri
+            if (st.sourceNode) { try { st.sourceNode.disconnect(); } catch (e) { } }
+            st.sourceNode = newSourceNode;
+            const bands = eqData[which].bands;
+            const entry = bands.length ? st.nodeMap[bands[0].id] : st.targetNode;
+            newSourceNode.connect(entry);
+        }
+
+        // Dipanggil pas band ditambah/dihapus (topologi chain berubah, perlu disambung ulang)
+        // sementara stream lagi live. Kalau gak live, ini no-op (band data tetep kesimpen).
+        function eqRebuildLive(which) {
+            const st = eqLive[which];
+            if (!st) return;
+            if (st.sourceNode) { try { st.sourceNode.disconnect(); } catch (e) { } }
+            Object.values(st.nodeMap).forEach(n => { try { n.disconnect(); } catch (e) { } });
+            eqConnectChain(which, st.ctx, st.sourceNode, st.targetNode);
+        }
+
+        // Update param band yang UDAH ADA (freq/gain/q/type) — real-time, gak perlu rebuild apapun
+        function eqUpdateLiveParam(which, bandId, band) {
+            const st = eqLive[which];
+            if (!st || !st.nodeMap[bandId]) return;
+            const node = st.nodeMap[bandId];
+            node.type = band.type;
+            node.frequency.value = band.freq;
+            node.gain.value = band.gain;
+            node.Q.value = band.q;
+        }
+
+        // ---------- DESIGN-TIME NODES (cuma buat hitung & gambar curve, gak connect ke speaker) ----------
+        // Ini bikin EQ bisa didesain/diedit MESKI belum streaming sama sekali.
+        function getEQDesignCtx() {
+            if (!eqDesignCtx) {
+                try { eqDesignCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { }
+            }
+            return eqDesignCtx;
+        }
+        function eqGetDesignNode(which, band) {
+            const ctx = getEQDesignCtx();
+            if (!ctx) return null;
+            let node = eqDesignNodes[which][band.id];
+            if (!node) { node = ctx.createBiquadFilter(); eqDesignNodes[which][band.id] = node; }
+            node.type = band.type;
+            node.frequency.value = band.freq;
+            node.gain.value = band.gain;
+            node.Q.value = band.q;
+            return node;
+        }
+        function eqComputeResponseDb(which, freqArray) {
+            const bands = eqData[which].bands;
+            const totalDb = new Float32Array(freqArray.length);
+            const magOut = new Float32Array(freqArray.length);
+            const phaseOut = new Float32Array(freqArray.length);
+            bands.forEach(b => {
+                const node = eqGetDesignNode(which, b);
+                if (!node) return;
+                node.getFrequencyResponse(freqArray, magOut, phaseOut);
+                for (let i = 0; i < freqArray.length; i++) {
+                    totalDb[i] += 20 * Math.log10(Math.max(magOut[i], 1e-6));
+                }
+            });
+            return totalDb;
+        }
+
+        // ---------- BAND CRUD ----------
+        function addEQBand(which, freq, gain, q, type) {
+            const band = { id: genEQId(), freq: freq || 1000, gain: gain || 0, q: q || 1, type: type || 'peaking' };
+            eqData[which].bands.push(band);
+            eqRebuildLive(which);
+            return band;
+        }
+        function addEQBandDefault() {
+            addEQBand(eqActiveTab, 1000, 0, 1, 'peaking');
+            renderEQBandList();
+            drawEQCurve();
+        }
+        function removeEQBand(which, id) {
+            const bands = eqData[which].bands;
+            const idx = bands.findIndex(b => b.id === id);
+            if (idx === -1) return;
+            bands.splice(idx, 1);
+            delete eqDesignNodes[which][id];
+            eqRebuildLive(which);
+            if (eqSelectedBandId === id) eqSelectedBandId = null;
+            renderEQBandList();
+            drawEQCurve();
+        }
+        function updateEQBand(which, id, partial) {
+            const band = eqData[which].bands.find(b => b.id === id);
+            if (!band) return;
+            Object.assign(band, partial);
+            eqUpdateLiveParam(which, id, band);
+        }
+
+        // ---------- CURVE MATH (freq log-scale, gain linear) ----------
+        function eqFreqToX(freq, w) { return ((Math.log10(freq) - EQ_LOG_MIN) / (EQ_LOG_MAX - EQ_LOG_MIN)) * w; }
+        function eqXToFreq(x, w) { const t = Math.min(Math.max(x / w, 0), 1); return Math.pow(10, EQ_LOG_MIN + t * (EQ_LOG_MAX - EQ_LOG_MIN)); }
+        function eqGainToY(g, h) { return h / 2 - (g / EQ_MAX_DB) * (h / 2 - 10); }
+        function eqYToGain(y, h) { return ((h / 2 - y) / (h / 2 - 10)) * EQ_MAX_DB; }
+
+        // ---------- CANVAS RENDER ----------
+        function drawEQCurve() {
+            const canvas = document.getElementById('eq-canvas');
+            if (!canvas) return;
+            const dpr = window.devicePixelRatio || 1;
+            const rect = canvas.getBoundingClientRect();
+            const w = Math.max(rect.width, 200), h = Math.max(rect.height, 150);
+            const needW = Math.round(w * dpr), needH = Math.round(h * dpr);
+            if (canvas.width !== needW || canvas.height !== needH) { canvas.width = needW; canvas.height = needH; }
+            const ctx = canvas.getContext('2d');
+            ctx.save();
+            ctx.scale(dpr, dpr);
+            ctx.clearRect(0, 0, w, h);
+
+            // Grid frekuensi
+            ctx.lineWidth = 1;
+            ctx.font = "9px 'Space Mono', monospace";
+            [50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000].forEach(f => {
+                const x = eqFreqToX(f, w);
+                ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+                ctx.fillStyle = 'rgba(255,255,255,0.28)';
+                ctx.fillText(f >= 1000 ? (f / 1000) + 'k' : String(f), x + 3, h - 4);
+            });
+            // Grid dB
+            [-18, -12, -6, 0, 6, 12, 18].forEach(db => {
+                const y = eqGainToY(db, h);
+                ctx.strokeStyle = db === 0 ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.06)';
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+                ctx.fillStyle = 'rgba(255,255,255,0.28)';
+                ctx.fillText((db > 0 ? '+' : '') + db, 4, y - 2);
+            });
+
+            const bands = eqData[eqActiveTab].bands;
+            const zeroY = eqGainToY(0, h);
+
+            if (bands.length > 0) {
+                const N = 220;
+                const freqs = new Float32Array(N);
+                for (let i = 0; i < N; i++) freqs[i] = eqXToFreq((i / (N - 1)) * w, w);
+                const dbVals = eqComputeResponseDb(eqActiveTab, freqs);
+
+                ctx.beginPath();
+                for (let i = 0; i < N; i++) {
+                    const x = (i / (N - 1)) * w;
+                    const y = eqGainToY(Math.max(-EQ_MAX_DB, Math.min(EQ_MAX_DB, dbVals[i])), h);
+                    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                }
+                ctx.strokeStyle = '#7c6aff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                ctx.lineTo(w, zeroY);
+                ctx.lineTo(0, zeroY);
+                ctx.closePath();
+                ctx.fillStyle = 'rgba(124,106,255,0.08)';
+                ctx.fill();
+            } else {
+                ctx.beginPath();
+                ctx.moveTo(0, zeroY);
+                ctx.lineTo(w, zeroY);
+                ctx.strokeStyle = 'rgba(124,106,255,0.4)';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+            }
+
+            bands.forEach((b, idx) => {
+                const x = eqFreqToX(b.freq, w);
+                const y = eqGainToY(Math.max(-EQ_MAX_DB, Math.min(EQ_MAX_DB, b.gain)), h);
+                const isSelected = b.id === eqSelectedBandId;
+                ctx.beginPath();
+                ctx.arc(x, y, isSelected ? 7 : 5.5, 0, Math.PI * 2);
+                ctx.fillStyle = eqBandColor(idx);
+                ctx.fill();
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = isSelected ? 2 : 1;
+                ctx.stroke();
+            });
+
+            ctx.restore();
+        }
+
+        // ---------- CANVAS INTERACTION ----------
+        function eqSetupCanvasInteraction() {
+            const canvas = document.getElementById('eq-canvas');
+            if (!canvas || canvas._eqWired) return;
+            canvas._eqWired = true;
+
+            function getPos(evt) {
+                const rect = canvas.getBoundingClientRect();
+                return { x: evt.clientX - rect.left, y: evt.clientY - rect.top, w: rect.width, h: rect.height };
+            }
+            function findBandNear(x, y, w, h) {
+                const bands = eqData[eqActiveTab].bands;
+                let found = null, bestDist = 18;
+                bands.forEach(b => {
+                    const bx = eqFreqToX(b.freq, w);
+                    const by = eqGainToY(Math.max(-EQ_MAX_DB, Math.min(EQ_MAX_DB, b.gain)), h);
+                    const d = Math.hypot(bx - x, by - y);
+                    if (d < bestDist) { bestDist = d; found = b; }
+                });
+                return found;
+            }
+
+            canvas.addEventListener('mousedown', (e) => {
+                const { x, y, w, h } = getPos(e);
+                const hit = findBandNear(x, y, w, h);
+                if (hit) {
+                    eqDragBandId = hit.id;
+                    eqSelectedBandId = hit.id;
+                } else {
+                    const freq = Math.round(eqXToFreq(x, w));
+                    const gain = Math.round(eqYToGain(y, h) * 10) / 10;
+                    const band = addEQBand(eqActiveTab, freq, Math.min(EQ_MAX_DB, Math.max(-EQ_MAX_DB, gain)), 1, 'peaking');
+                    eqDragBandId = band.id;
+                    eqSelectedBandId = band.id;
+                }
+                renderEQBandList();
+                drawEQCurve();
+            });
+
+            canvas.addEventListener('mousemove', (e) => {
+                const { x, y, w, h } = getPos(e);
+                if (eqDragBandId) {
+                    const freq = Math.round(eqXToFreq(x, w));
+                    const gain = Math.round(eqYToGain(y, h) * 10) / 10;
+                    updateEQBand(eqActiveTab, eqDragBandId, {
+                        freq: Math.min(EQ_MAX_F, Math.max(EQ_MIN_F, freq)),
+                        gain: Math.min(EQ_MAX_DB, Math.max(-EQ_MAX_DB, gain)),
+                    });
+                    drawEQCurve();
+                    renderEQBandList();
+                } else {
+                    const hit = findBandNear(x, y, w, h);
+                    const readout = document.getElementById('eq-hover-readout');
+                    if (!readout) return;
+                    if (hit) {
+                        readout.textContent = Math.round(hit.freq) + 'Hz  ' + (hit.gain >= 0 ? '+' : '') + hit.gain.toFixed(1) + 'dB  Q' + hit.q.toFixed(2);
+                    } else {
+                        readout.textContent = Math.round(eqXToFreq(x, w)) + ' Hz';
+                    }
+                }
+            });
+
+            window.addEventListener('mouseup', () => { eqDragBandId = null; });
+
+            canvas.addEventListener('dblclick', (e) => {
+                const { x, y, w, h } = getPos(e);
+                const hit = findBandNear(x, y, w, h);
+                if (hit) removeEQBand(eqActiveTab, hit.id);
+            });
+
+            canvas.addEventListener('wheel', (e) => {
+                const { x, y, w, h } = getPos(e);
+                const hit = findBandNear(x, y, w, h);
+                if (hit) {
+                    e.preventDefault();
+                    const factor = e.deltaY > 0 ? 1 / 1.15 : 1.15;
+                    const newQ = Math.round(Math.min(18, Math.max(0.1, hit.q * factor)) * 100) / 100;
+                    updateEQBand(eqActiveTab, hit.id, { q: newQ });
+                    drawEQCurve();
+                    renderEQBandList();
+                }
+            }, { passive: false });
+
+            canvas.addEventListener('mouseleave', () => {
+                const readout = document.getElementById('eq-hover-readout');
+                if (readout) readout.textContent = '';
+            });
+
+            window.addEventListener('resize', () => drawEQCurve());
+        }
+
+        // ---------- BAND LIST (panel numerik presisi) ----------
+        function renderEQBandList() {
+            const container = document.getElementById('eq-band-list');
+            if (!container) return;
+            const bands = eqData[eqActiveTab].bands;
+            if (bands.length === 0) {
+                container.innerHTML = '<div class="eq-disabled-note">No bands yet — click anywhere on the curve above to add one.</div>';
+                return;
+            }
+            const sorted = [...bands].sort((a, b) => a.freq - b.freq);
+            container.innerHTML = sorted.map((b) => {
+                const idx = bands.indexOf(b);
+                const typeOptions = EQ_FILTER_TYPES.map(t => `<option value="${t}" ${t === b.type ? 'selected' : ''}>${t}</option>`).join('');
+                return `
+                <div class="eq-band-row">
+                    <div class="eq-band-color" style="background:${eqBandColor(idx)}"></div>
+                    <div>
+                        <span class="eq-band-field-label">Type</span>
+                        <select onchange="updateEQBand('${eqActiveTab}','${b.id}',{type:this.value});drawEQCurve()">${typeOptions}</select>
+                    </div>
+                    <div>
+                        <span class="eq-band-field-label">Freq (Hz)</span>
+                        <input type="number" min="20" max="20000" step="1" value="${Math.round(b.freq)}"
+                            onchange="updateEQBand('${eqActiveTab}','${b.id}',{freq:Math.min(20000,Math.max(20,parseFloat(this.value)||20))});drawEQCurve()">
+                    </div>
+                    <div>
+                        <span class="eq-band-field-label">Gain (dB)</span>
+                        <input type="number" min="-24" max="24" step="0.1" value="${b.gain}"
+                            onchange="updateEQBand('${eqActiveTab}','${b.id}',{gain:Math.min(24,Math.max(-24,parseFloat(this.value)||0))});drawEQCurve()">
+                    </div>
+                    <div>
+                        <span class="eq-band-field-label">Q</span>
+                        <input type="number" min="0.1" max="18" step="0.1" value="${b.q}"
+                            onchange="updateEQBand('${eqActiveTab}','${b.id}',{q:Math.min(18,Math.max(0.1,parseFloat(this.value)||0.1))});drawEQCurve()">
+                    </div>
+                    <div class="eq-band-remove" onclick="removeEQBand('${eqActiveTab}','${b.id}')">✕</div>
+                </div>`;
+            }).join('');
+        }
+
+        // ---------- TABS ----------
+        async function switchEQTab(which) {
+            eqActiveTab = which;
+            document.getElementById('eq-tab-mic').classList.toggle('active', which === 'mic');
+            document.getElementById('eq-tab-system').classList.toggle('active', which === 'system');
+            eqSelectedBandId = null;
+            await populateEQPresetSelect();
+            renderEQBandList();
+            drawEQCurve();
+        }
+
+        function updateEQTabAvailability() {
+            const mode = document.getElementById('audio-select').value;
+            const hasMic = mode === 'mic' || mode === 'both';
+            const hasSys = mode === 'system' || mode === 'both';
+            const micTabBtn = document.getElementById('eq-tab-mic');
+            const sysTabBtn = document.getElementById('eq-tab-system');
+            if (!micTabBtn || !sysTabBtn) return;
+            micTabBtn.style.opacity = hasMic ? '1' : '0.4';
+            sysTabBtn.style.opacity = hasSys ? '1' : '0.4';
+            micTabBtn.style.pointerEvents = hasMic ? 'auto' : 'none';
+            sysTabBtn.style.pointerEvents = hasSys ? 'auto' : 'none';
+            if (eqActiveTab === 'mic' && !hasMic && hasSys) switchEQTab('system');
+            else if (eqActiveTab === 'system' && !hasSys && hasMic) switchEQTab('mic');
+            else drawEQCurve(); // ukuran canvas bisa berubah pas audio-options di-toggle, redraw aman
+        }
+
+        // ---------- PRESETS (disimpan di SERVER lewat /api/eq-presets — bukan localStorage,
+        // jadi bisa diakses & dipakai dari device manapun yang buka halaman sender ini) ----------
+        const EQ_PRESETS_API = '/api/eq-presets';
+
+        async function eqLoadAllPresets() {
+            try {
+                const res = await fetch(EQ_PRESETS_API);
+                if (!res.ok) throw new Error('Server returned ' + res.status);
+                const data = await res.json();
+                return { mic: data.mic || {}, system: data.system || {} };
+            } catch (e) {
+                showToast('⚠️ Could not reach server for presets — check your connection', 'error');
+                return { mic: {}, system: {} };
+            }
+        }
+
+        async function eqSavePresetToServer(which, name, bands) {
+            try {
+                const res = await fetch(EQ_PRESETS_API, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ which, name, bands }),
+                });
+                if (!res.ok) throw new Error('Server returned ' + res.status);
+                return true;
+            } catch (e) {
+                showToast('⚠️ Failed to save preset to server', 'error');
+                return false;
+            }
+        }
+
+        async function eqDeletePresetFromServer(which, name) {
+            try {
+                const res = await fetch(EQ_PRESETS_API, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ which, name }),
+                });
+                if (!res.ok) throw new Error('Server returned ' + res.status);
+                return true;
+            } catch (e) {
+                showToast('⚠️ Failed to delete preset on server', 'error');
+                return false;
+            }
+        }
+
+        async function populateEQPresetSelect() {
+            const sel = document.getElementById('eq-preset-select');
+            if (!sel) return;
+            const all = await eqLoadAllPresets();
+            const names = Object.keys(all[eqActiveTab] || {});
+            sel.innerHTML = '<option value="__flat__">Flat (default)</option>' +
+                names.map(n => `<option value="${n.replace(/"/g, '&quot;')}">${n}</option>`).join('');
+            sel.value = '__flat__';
+        }
+        async function onEQPresetSelect() {
+            const sel = document.getElementById('eq-preset-select');
+            const name = sel.value;
+            if (name === '__flat__') { resetEQFlat(); return; }
+            const all = await eqLoadAllPresets();
+            const bands = (all[eqActiveTab] && all[eqActiveTab][name]) || [];
+            eqData[eqActiveTab].bands = bands.map(b => ({ id: genEQId(), freq: b.freq, gain: b.gain, q: b.q, type: b.type }));
+            eqDesignNodes[eqActiveTab] = {};
+            eqRebuildLive(eqActiveTab);
+            eqSelectedBandId = null;
+            renderEQBandList();
+            drawEQCurve();
+            showToast('🎛️ Preset "' + name + '" loaded', 'success');
+        }
+        async function saveEQPreset() {
+            const name = prompt('Preset name:');
+            if (!name) return;
+            const bands = eqData[eqActiveTab].bands.map(b => ({ freq: b.freq, gain: b.gain, q: b.q, type: b.type }));
+            const ok = await eqSavePresetToServer(eqActiveTab, name, bands);
+            if (!ok) return;
+            await populateEQPresetSelect();
+            document.getElementById('eq-preset-select').value = name;
+            showToast('💾 Preset "' + name + '" saved to server — available on any device', 'success');
+        }
+        async function deleteEQPreset() {
+            const sel = document.getElementById('eq-preset-select');
+            const name = sel.value;
+            if (name === '__flat__') { showToast('⚠️ Cannot delete the default Flat preset', 'info'); return; }
+            const ok = await eqDeletePresetFromServer(eqActiveTab, name);
+            if (!ok) return;
+            await populateEQPresetSelect();
+            showToast('🗑️ Preset "' + name + '" deleted', 'info');
+        }
+        function resetEQFlat() {
+            eqData[eqActiveTab].bands = [];
+            eqDesignNodes[eqActiveTab] = {};
+            eqRebuildLive(eqActiveTab);
+            eqSelectedBandId = null;
+            renderEQBandList();
+            drawEQCurve();
+            const sel = document.getElementById('eq-preset-select');
+            if (sel) sel.value = '__flat__';
+        }
+
+        // ---------- INIT ----------
+        document.getElementById('eq-preset-select').addEventListener('change', onEQPresetSelect);
+        eqSetupCanvasInteraction();
+        populateEQPresetSelect();
+        renderEQBandList();
+        updateEQTabAvailability();
+        drawEQCurve();
+
+        // ====== Hot-swap MIC device — tanpa restart/stop stream ======
+        // Trik: track yang dikirim ke WebRTC itu output dari micGainNode (lewat dest.stream),
+        // BUKAN track mentah dari device. Jadi kita cuma perlu ganti SOURCE NODE yang nyambung
+        // ke micGainNode — track yang udah dikirim ke peer connection gak pernah disentuh sama
+        // sekali, makanya gak butuh replaceTrack/renegotiation apapun di WebRTC-nya.
+        async function swapMicDevice(deviceId) {
+            if (!micAudioCtx || !micGainNode) return; // mic gak aktif di sesi ini, gak ada yang perlu di-swap
+            try {
+                const micConstraints = {
+                    echoCancellation: toggleStates.echo,
+                    noiseSuppression: toggleStates.noise,
+                    autoGainControl: toggleStates.gain,
+                    sampleRate: parseInt(document.getElementById('audio-quality-select').value),
+                    channelCount: 2,
+                };
+                if (deviceId) micConstraints.deviceId = { exact: deviceId };
+
+                const newRawStream = await navigator.mediaDevices.getUserMedia({ audio: micConstraints });
+                const newSourceNode = micAudioCtx.createMediaStreamSource(newRawStream);
+
+                // Sambungin source baru ke entry point EQ chain (band pertama, atau GainNode
+                // langsung kalau EQ kosong) — biar gak ada gap audio
+                eqRewireLiveSource('mic', newSourceNode);
+
+                // Baru putus source lama & stop track lamanya
+                if (micSourceNode) { try { micSourceNode.disconnect(); } catch (e) { } }
+                const oldTracks = rawMicTracks;
+                oldTracks.forEach(t => { t.onended = null; t.stop(); }); // lepas onended dulu biar gak kepicu alert palsu
+
+                micSourceNode = newSourceNode;
+                rawMicTracks = newRawStream.getAudioTracks();
+                rawMicTracks.forEach(t => {
+                    t.onended = () => {
+                        showToast('🎤 Microphone disconnected', 'error');
+                        sendSenderAlert('MIC_DISCONNECTED', "Sender's microphone was disconnected");
+                    };
+                });
+
+                showToast('🎙️ Mic switched — live, no restart needed', 'success');
+            } catch (e) {
+                showToast('⚠️ Failed to switch mic: ' + e.message, 'error');
+            }
+        }
+
+        // ====== Hot-swap CAMERA device — tanpa restart/stop stream ======
+        // Beda dari mic: video gak ada "destination node" semacam GainNode, jadi track
+        // video yang dikirim itu MEMANG harus diganti. Caranya pakai RTCRtpSender.replaceTrack()
+        // di semua koneksi yang lagi aktif — ini operasi resmi WebRTC yang TIDAK butuh
+        // renegotiation/SDP baru, selama codec & media kind-nya sama (video tetap video).
+        async function swapCameraDevice(deviceId) {
+            if (!currentStream || sourceMode !== 'webcam') return;
+            try {
+                const fps = parseInt(document.getElementById('fps-select').value);
+                const res = parseInt(document.getElementById('res-select').value);
+                const resMap = { 720: [1280, 720], 1080: [1920, 1080], 1440: [2560, 1440], 2160: [3840, 2160] };
+                const [w, h] = resMap[res] || [1920, 1080];
+                const videoConstraints = {
+                    width: { ideal: w },
+                    height: { ideal: h },
+                    frameRate: { ideal: fps, max: fps },
+                };
+                if (deviceId) videoConstraints.deviceId = { exact: deviceId };
+
+                const newCamStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
+                const newVideoTrack = newCamStream.getVideoTracks()[0];
+
+                // Ganti track di semua RTCRtpSender video yang lagi aktif — ini yang bikin
+                // perubahannya kelihatan di receiver tanpa perlu renegotiation/reconnect
+                const senders = [];
+                activeCalls.forEach(call => {
+                    const pc = call.peerConnection;
+                    if (!pc) return;
+                    const s = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+                    if (s) senders.push(s);
+                });
+                await Promise.all(senders.map(s => s.replaceTrack(newVideoTrack)));
+
+                // Update currentStream: buang track lama, masukin yang baru
+                const oldVideoTracks = currentStream.getVideoTracks();
+                oldVideoTracks.forEach(t => {
+                    t.onended = null; // lepas dulu biar gak kepicu alert pas di-stop manual
+                    currentStream.removeTrack(t);
+                    t.stop();
+                });
+                currentStream.addTrack(newVideoTrack);
+
+                // Pasang ulang notify-only onended buat track baru
+                newVideoTrack.onended = () => {
+                    showToast('📷 Webcam disconnected', 'error');
+                    sendSenderAlert('CAMERA_DISCONNECTED', "Sender's camera was disconnected");
+                };
+
+                // Refresh preview lokal
+                document.getElementById('preview-video').srcObject = currentStream;
+
+                showToast('📷 Camera switched — live, no restart needed', 'success');
+            } catch (e) {
+                showToast('⚠️ Failed to switch camera: ' + e.message, 'error');
+            }
+        }
+
+        // Pasang listener di dropdown — kalau lagi live, langsung hot-swap; kalau belum live, biarkan
+        // kebaca normal pas Start (behavior lama tetap utuh)
+        document.getElementById('mic-device-select').addEventListener('change', function () {
+            const audioMode = document.getElementById('audio-select').value;
+            if (isLive && (audioMode === 'mic' || audioMode === 'both')) {
+                swapMicDevice(this.value);
+            }
+        });
+        document.getElementById('camera-select').addEventListener('change', function () {
+            if (isLive && sourceMode === 'webcam') {
+                swapCameraDevice(this.value);
+            }
+        });
+
+        // ====== Pause / Resume ======
+        function togglePause() {
+            if (!currentStream) return;
+            paused = !paused;
+
+            // Kirim sinyal freeze/unfreeze ke semua receiver via DataConn
+            const signal = paused ? 'freeze' : 'unfreeze';
+            activeDataConns.forEach(conn => {
+                try { if (conn.open) conn.send(signal); } catch (e) { }
+            });
+
+            document.getElementById('pause-btn').textContent = paused ? '▶ Resume' : '⏸ Pause';
+            setStatus(
+                paused ? 'connecting' : 'live',
+                paused ? 'Paused — receiver showing last frame' : 'Streaming to ' + activeCalls.length + ' device(s)',
+                paused ? 'PAUSED' : 'LIVE'
+            );
+            showToast(paused ? '⏸ Streaming paused — frame frozen on receiver' : '▶ Streaming resumed', 'info');
+        }
+
+        // ====== Stop ======
+        function stopStream() { handleStop(); showToast('⏹ Streaming stopped', 'info'); }
+        function handleStop() {
+            // Notify all receivers that stream was intentionally ended
+            activeDataConns.forEach(conn => {
+                try { if (conn.open) conn.send('stream-ended'); } catch (e) { }
+            });
+            // FIX Bug G: increased delay to 1500ms so 'stream-ended' signal
+            // has enough time to reach receiver via DataConn before call is closed
+            // 600ms was too short for connections going through Cloudflare Tunnel
+            setTimeout(() => {
+                activeCalls.forEach(c => { try { c.close(); } catch (e) { } });
+                activeCalls = [];
+            }, 1500);
+            if (currentStream) { currentStream.getTracks().forEach(t => t.stop()); currentStream = null; }
+            // Stop raw system audio track (screen mode) yang sebelumnya di-removeTrack
+            // dari screenStream — kalau gak di-stop manual, capture-nya tetep nyangkut di background
+            if (rawSysAudioTracks.length) { rawSysAudioTracks.forEach(t => t.stop()); rawSysAudioTracks = []; }
+            // Stop raw mic track — getUserMedia track gak ke-stop otomatis pas AudioContext-nya di-close
+            if (rawMicTracks.length) { rawMicTracks.forEach(t => t.stop()); rawMicTracks = []; }
+            // Stop sysDisplayStream (getDisplayMedia untuk system audio di webcam mode)
+            // supaya browser sharing bar ikut hilang saat stop dari web UI
+            if (sysDisplayStream) { sysDisplayStream.getTracks().forEach(t => t.stop()); sysDisplayStream = null; }
+            // Cleanup mic GainNode
+            micGainNode = null;
+            micSourceNode = null;
+            eqLive.mic = null;
+            if (micAudioCtx) { try { micAudioCtx.close(); } catch (e) { } micAudioCtx = null; }
+            // Cleanup sys GainNode
+            sysGainNode = null;
+            sysSourceNode = null;
+            eqLive.system = null;
+            if (sysAudioCtx) { try { sysAudioCtx.close(); } catch (e) { } sysAudioCtx = null; }
+            // Reset mute state
+            micMuted = false;
+            micMutedPrevGain = 0;
+            sysMuted = false;
+            sysMutedPrevGain = 0;
+            const muteBtn = document.getElementById('mute-mic-btn');
+            if (muteBtn) {
+                muteBtn.textContent = '🔊 Mute';
+                muteBtn.style.background = 'rgba(255,255,255,0.05)';
+                muteBtn.style.borderColor = 'var(--border)';
+                muteBtn.style.color = 'var(--muted)';
+            }
+            const muteSysBtn = document.getElementById('mute-sys-btn');
+            if (muteSysBtn) {
+                muteSysBtn.textContent = '🔊 Mute';
+                muteSysBtn.style.background = 'rgba(255,255,255,0.05)';
+                muteSysBtn.style.borderColor = 'var(--border)';
+                muteSysBtn.style.color = 'var(--muted)';
+            }
+            const gainSlider = document.getElementById('mic-gain-slider');
+            if (gainSlider) gainSlider.disabled = false;
+            const gainRow = document.getElementById('mic-gain-row');
+            if (gainRow) gainRow.style.opacity = '1';
+            const sysGainSlider = document.getElementById('sys-gain-slider');
+            if (sysGainSlider) sysGainSlider.disabled = false;
+            const sysGainRow = document.getElementById('sys-gain-row');
+            if (sysGainRow) sysGainRow.style.opacity = '1';
+            // Sembunyikan warning info
+            document.getElementById('noise-live-info').classList.add('hidden');
+            stopStats();
+            setLive(false);
+            paused = false;
+            document.getElementById('pause-btn').textContent = '⏸ Pause';
+            document.getElementById('preview-video').srcObject = null;
+            setStatus('', sourceMode === 'webcam' ? 'Ready — Press Start Webcam' : 'Ready — Press Start Screen Share', 'IDLE');
+            // Code stays the same — only refreshing the page generates a new code
+        }
+
+        // ====== Stats — pakai getStats() untuk angka AKTUAL ======
+        function startStats() {
+            startTime = Date.now();
+            lastBytesSent = 0;
+            lastStatsTime = Date.now();
+
+            statsInterval = setInterval(async () => {
+                // Duration
+                const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                const m = Math.floor(elapsed / 60);
+                const s = elapsed % 60;
+                document.getElementById('stat-time').textContent = `${m}:${s.toString().padStart(2, '0')}`;
+
+                if (!activeCalls[0]?.peerConnection) return;
+                const pc = activeCalls[0].peerConnection;
+
+                // Panel stat FPS/RES/MBPS/Limit di bawah cuma baca 1 koneksi (activeCalls[0]) —
+                // kalau ada beberapa receiver connect bareng, ini PENTING dikasih tau lagi liat
+                // punya device yang MANA, biar gak salah tafsir data device lain.
+                const statsLabel = document.getElementById('stats-for-device');
+                if (statsLabel) {
+                    const meta = receiverMeta.get(activeCalls[0].peer);
+                    const devName = meta?.name || 'device 1';
+                    if (activeCalls.length > 1) {
+                        statsLabel.textContent = '📊 Stats below are for "' + devName + '" only (' + activeCalls.length + ' devices connected total)';
+                        statsLabel.classList.remove('hidden');
+                    } else {
+                        statsLabel.classList.add('hidden');
+                    }
+                }
+
+                try {
+                    const stats = await pc.getStats();
+                    let fps = null, width = null, height = null, bytesSent = 0, limitReason = null;
+
+                    stats.forEach(report => {
+                        if (report.type === 'outbound-rtp' && report.kind === 'video') {
+                            fps = report.framesPerSecond ?? null;
+                            width = report.frameWidth ?? null;
+                            height = report.frameHeight ?? null;
+                            bytesSent = report.bytesSent ?? 0;
+                            limitReason = report.qualityLimitationReason ?? 'none';
+                        }
+                    });
+
+                    // "Limit" — kenapa encoder nurunin kualitas: cpu = laptop/PC pengirim kewalahan
+                    // encode, bandwidth = koneksi/receiver gak sanggup nampung bitrate segitu (ini juga
+                    // yang biasanya kena kalau device penerima decode-nya lemot, kayak TV jadul),
+                    // none = gak ada pembatasan sama sekali, lagi encode sesuai request.
+                    if (limitReason !== null) {
+                        const limitLabel = { none: 'OK', cpu: 'CPU', bandwidth: 'Bandwidth', other: 'Other' };
+                        document.getElementById('stat-limit').textContent = limitLabel[limitReason] || limitReason;
+                    }
+
+                    // FPS aktual dari RTCStatsReport
+                    if (fps !== null) {
+                        document.getElementById('stat-fps').textContent = Math.round(fps);
+                        document.getElementById('fps-display').textContent = Math.round(fps) + ' FPS';
+                    } else if (currentStream) {
+                        // fallback ke track settings
+                        const vt = currentStream.getVideoTracks()[0];
+                        const s2 = vt?.getSettings();
+                        document.getElementById('stat-fps').textContent = Math.round(s2?.frameRate || 0) || '--';
+                    }
+
+                    // Resolution aktual
+                    if (height) {
+                        document.getElementById('stat-res').textContent = height + 'p';
+                    }
+
+                    // Bitrate aktual (Mbps)
+                    const now = Date.now();
+                    const dt = (now - lastStatsTime) / 1000;
+                    if (dt > 0 && bytesSent > lastBytesSent) {
+                        const mbps = ((bytesSent - lastBytesSent) * 8 / 1_000_000 / dt).toFixed(1);
+                        document.getElementById('stat-bitrate').textContent = mbps;
+                    }
+                    lastBytesSent = bytesSent;
+                    lastStatsTime = now;
+
+                } catch (e) {
+                    // fallback kalau getStats() gagal
+                    if (currentStream) {
+                        const vt = currentStream.getVideoTracks()[0];
+                        const s2 = vt?.getSettings();
+                        document.getElementById('stat-fps').textContent = Math.round(s2?.frameRate || 0) || '--';
+                        document.getElementById('stat-res').textContent = s2?.height ? s2.height + 'p' : '--';
+                    }
+                }
+            }, 1000);
+        }
+
+        function stopStats() {
+            clearInterval(statsInterval);
+            statsInterval = null;
+            document.getElementById('stat-bitrate').textContent = '--';
+        }
+
+        // Init peer host saat halaman load
+        initSenderPeer();
+    </script>
+</body>
+
+</html>
