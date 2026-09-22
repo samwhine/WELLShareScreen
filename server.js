@@ -156,7 +156,8 @@ function getLocalIP() {
 
 const PORT = 3000;
 const IP = getLocalIP();
-const DOMAIN = 'ss.creativelegacy.my.id';
+// Public-domain placeholder for the repository.
+const DOMAIN = 'your-domain.example.com';
 
 // ── PeerJS Self-Hosted Server ───────────────────────────────────
 const http = require('http');
