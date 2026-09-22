@@ -1343,6 +1343,24 @@
         let currentStream = null;
         let activeCalls = [];
         let activeDataConns = [];   // track data connections to notify receivers on stop
+        // Signaling reconnect does not necessarily revive an existing media PC.
+        // Keep one retry timer per receiver so failed calls are recreated safely.
+        const callRetryTimers = new Map();
+        function cancelCallRetry(peerId) {
+            const timer = callRetryTimers.get(peerId);
+            if (timer) clearTimeout(timer);
+            callRetryTimers.delete(peerId);
+        }
+        function scheduleCallRetry(peerId, delay = 2500) {
+            if (!peerId || callRetryTimers.has(peerId)) return;
+            const timer = setTimeout(() => {
+                callRetryTimers.delete(peerId);
+                if (!currentStream || !isLive || !knownReceivers.includes(peerId)) return;
+                if (activeCalls.some(c => c.peer === peerId && c.open !== false)) return;
+                callReceiver(peerId);
+            }, delay);
+            callRetryTimers.set(peerId, timer);
+        }
         let waitingReceivers = [];  // receivers that connected before stream was active
         let knownReceivers = [];    // ALL receiver IDs ever registered — persistent across stop/start
         // receiverMeta: Map<peerId, {name, mode, ip}>
@@ -2425,6 +2443,12 @@
 
             p.on('open', (openId) => {
                 document.getElementById('my-peer-code').textContent = openId;
+                // Recreate missing media calls after signaling recovery.
+                if (currentStream && isLive) {
+                    setTimeout(() => {
+                        knownReceivers.forEach(id => scheduleCallRetry(id, 500));
+                    }, 500);
+                }
             });
 
             // TV sends DataConnection with its peer ID (or {id, name, mode} object)
@@ -2609,6 +2633,7 @@
 
         function callReceiver(tvPeerId) {
             if (!currentStream || !peer) return;
+            cancelCallRetry(tvPeerId);
 
             // Don't call if already have an active call to this peer
             if (activeCalls.find(c => c.peer === tvPeerId && c.open !== false)) {
@@ -2625,12 +2650,12 @@
             const callTimeout = setTimeout(() => {
                 if (!callEstablished) {
                     activeCalls = activeCalls.filter(c => c !== call);
-                    // Timeout = receiver benar-benar tidak reachable, boleh hapus dari known
-                    knownReceivers = knownReceivers.filter(id => id !== tvPeerId);
-                    waitingReceivers = waitingReceivers.filter(id => id !== tvPeerId);
+                    // A transient ICE timeout must not forget a receiver; the
+                    // retry loop needs its ID to recreate the media call.
                     updateConnectedCount();
                     renderReceiverList();
                     try { call.close(); } catch (e) { }
+                    scheduleCallRetry(tvPeerId, 2500);
                 }
             }, 8000);
 
@@ -2654,12 +2679,14 @@
                 }
                 if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
                     clearTimeout(callTimeout);
+                    call._reconnecting = true;
                     activeCalls = activeCalls.filter(c => c !== call);
-                    // Fix Bug 1: JANGAN hapus dari knownReceivers — ini hanya network issue
-                    // receiver masih waiting dengan code yang sama, bisa di-call ulang saat start lagi
+                    // Preserve the receiver and recreate the actual media call.
+                    try { call.close(); } catch (e) { }
                     updateConnectedCount();
                     renderReceiverList();
                     reapplyBitrateToAllCalls();
+                    scheduleCallRetry(tvPeerId, pc.iceConnectionState === 'failed' ? 1500 : 8000);
                 }
             });
             setTimeout(() => applyBitrateToCall(call), 2000);
@@ -2672,6 +2699,7 @@
                 updateConnectedCount();
                 renderReceiverList();
                 reapplyBitrateToAllCalls();
+                if (!call._reconnecting) scheduleCallRetry(tvPeerId, 2500);
             });
             call.on('close', () => {
                 clearTimeout(callTimeout);
@@ -2680,9 +2708,12 @@
                 // knownReceivers hanya dihapus saat kick (intentional)
                 updateConnectedCount();
                 renderReceiverList();
-                showToast('📴 1 device disconnected', 'info');
+                if (!call._reconnecting) {
+                    showToast('📴 1 device disconnected', 'info');
+                    scheduleCallRetry(tvPeerId, 2500);
+                }
                 if (activeCalls.length === 0 && isLive) {
-                    setStatus('live', 'Streaming active — waiting for receiver', 'LIVE');
+                    setStatus('live', 'Streaming active — reconnecting receiver', 'LIVE');
                 } else {
                     reapplyBitrateToAllCalls();
                 }

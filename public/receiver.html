@@ -618,6 +618,11 @@
     let myID          = null;
     let senderCode    = null;
     let activeCall    = null;
+    // Tap is needed only for the first playback on iOS. After the user has
+    // activated playback once, reconnects must stay silent/autoplay-friendly.
+    const isIOSDevice = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    let playbackActivated = false;
     let pendingStream = null;
     let pendingCall   = null;
     let muted         = false;
@@ -1227,14 +1232,34 @@
                 $videoEl.style.transition = 'opacity 1.2s ease';
                 $videoEl.style.opacity = '0.2';
 
-                // Tap overlay muncul di atas video
-                $tapOver.classList.add('visible');
+                // Only the first iOS playback needs a user gesture. A reconnect
+                // must not bring Tap to Start back after the session was activated.
+                if (!playbackActivated) {
+                    $tapOver.classList.add('visible');
+                } else {
+                    isStreaming = true;
+                    $videoEl.style.opacity = '1';
+                    $videoEl.muted = muted;
+                    if (!muted) $videoEl.volume = 1;
+                }
             })
             .catch(() => {
-                // Autoplay diblock — tunggu tap
+                // Keep the initial iOS gesture flow, but do not block reconnects
+                // behind a new tap. Retry muted playback once for reconnects.
+                if (!isIOSDevice || playbackActivated) {
+                    $videoEl.muted = true;
+                    $videoEl.play().then(() => {
+                        isStreaming = true;
+                        startStats(stream, call);
+                        startFreezeWatch(stream);
+                        $videoEl.style.opacity = '1';
+                    }).catch(() => {
+                        showToast('⚠️ Reconnected video is waiting for the browser', 'info');
+                    });
+                    return;
+                }
                 pendingStream = stream;
                 pendingCall   = call;
-                // Fade out waiting & connect, biarkan video di belakang
                 fadeOut($waiting);
                 fadeOut($connect);
                 clearTimeout(goneTimers.get($video));
@@ -1245,6 +1270,8 @@
     }
 
     function handleTapToPlay() {
+        // This is the one explicit gesture allowed for iOS autoplay policy.
+        playbackActivated = true;
         $tapOver.classList.remove('visible');
 
         // Paksa waiting & connect fade out — jangan pakai showScreen() karena
