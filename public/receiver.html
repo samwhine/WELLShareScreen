@@ -1202,6 +1202,10 @@
         pendingStream = null;
         pendingCall   = null;
 
+        // A previous media failure may have left the last frame on canvas.
+        // A newly reconnected stream must switch back to the live video.
+        unfreeze();
+
         // FIX: Cancel timer srcObject = null dari showScreen sebelumnya — inilah penyebab blank!
         clearTimeout(srcObjectTimer);
         srcObjectTimer = null;
